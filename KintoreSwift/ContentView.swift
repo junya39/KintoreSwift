@@ -2,13 +2,14 @@ import SwiftUI
 import Charts
 
 struct SetEntry: Identifiable, Hashable {
-    let id = UUID()
+    let id: Int64        // ← DBの id をここで管理
     let date: Date
     let bodyPart: String
     let exercise: String
     let weight: Double
     let reps: Int
 }
+
 
 enum GroupingType: String, CaseIterable {
     case day = "日ごと"
@@ -51,7 +52,15 @@ struct ContentView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(Array(exerciseCategories.keys), id: \.self) { part in
-                            Button(action: { selectedBodyPart = part }) {
+                            Button(action: {
+                                selectedBodyPart = part
+                                // ✅ 部位を切り替えたときに最初の種目を自動選択
+                                if let firstExercise = exerciseCategories[part]?.first {
+                                    selectedExercise = firstExercise
+                                } else {
+                                    selectedExercise = ""
+                                }
+                            }) {
                                 Text(part)
                                     .padding(8)
                                     .background(selectedBodyPart == part ? Color.blue : Color.gray.opacity(0.3))
@@ -91,9 +100,23 @@ struct ContentView: View {
 
                     Button("このセットを追加") {
                         if let w = Double(weightText), let r = Int(repsText), w > 0, r > 0 {
-                            entries.append(SetEntry(date: selectedDate, bodyPart: selectedBodyPart, exercise: selectedExercise, weight: w, reps: r))
+                            // ✅ DBに追加
+                            DatabaseManager.shared.insertWorkout(
+                                date: selectedDate,
+                                bodyPart: selectedBodyPart,
+                                exercise: selectedExercise,
+                                weight: w,
+                                reps: r
+                            )
+
+                            // ✅ DBから最新データを取得
+                            entries = DatabaseManager.shared.fetchAll()
+
+                            // 入力リセット
                             weightText = ""
                             repsText = ""
+
+                            print("✅ 新しいデータをDBに追加しました")
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -115,18 +138,37 @@ struct ContentView: View {
 
                 Chart {
                     ForEach(groupedData(), id: \.0) { (date, totalWeight, totalSets, totalReps) in
-                        LineMark(x: .value("日付", date), y: .value("合計重量", totalWeight))
-                            .foregroundStyle(.blue)
-                        PointMark(x: .value("日付", date), y: .value("合計重量", totalWeight))
-                            .foregroundStyle(.blue)
+                        LineMark(
+                            x: .value("日付", date),
+                            y: .value("合計重量 (kg×rep)", totalWeight),
+                            series: .value("種類", "合計重量")
+                        )
+                        .foregroundStyle(.blue)
+                        .symbol(.circle)
 
-                        LineMark(x: .value("日付", date), y: .value("セット数", totalSets))
-                            .foregroundStyle(.green)
+                        LineMark(
+                            x: .value("日付", date),
+                            y: .value("セット数", totalSets),
+                            series: .value("種類", "セット数")
+                        )
+                        .foregroundStyle(.green)
+                        .symbol(.circle)
 
-                        LineMark(x: .value("日付", date), y: .value("合計回数", totalReps))
-                            .foregroundStyle(.red)
+                        LineMark(
+                            x: .value("日付", date),
+                            y: .value("合計回数", totalReps),
+                            series: .value("種類", "合計回数")
+                        )
+                        .foregroundStyle(.red)
+                        .symbol(.circle)
                     }
                 }
+                .chartForegroundStyleScale([
+                    "合計重量": .blue,
+                    "セット数": .green,
+                    "合計回数": .red
+                ])
+                .chartLegend(position: .bottom)
                 .frame(height: 200)
                 .padding(.horizontal)
 
@@ -152,6 +194,12 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Workout")
+            .onAppear {
+                // ✅ 起動時にDBからデータを読み込む
+                entries = DatabaseManager.shared.fetchAll()
+                print("📦 DBからデータを読み込みました（\(entries.count)件）")
+            }
+
             // 部位追加アラート
             .alert("新しい部位を追加", isPresented: $showingAddBodyPart) {
                 TextField("部位名", text: $newBodyPart)
@@ -164,6 +212,7 @@ struct ContentView: View {
                 }
                 Button("キャンセル", role: .cancel) {}
             }
+
             // 種目追加アラート
             .alert("新しい種目を追加", isPresented: $showingAddExercise) {
                 TextField("種目名", text: $newExercise)
@@ -211,10 +260,13 @@ struct ContentView: View {
             .sorted { $0.0 < $1.0 }
     }
 
-    // 削除処理
+    // 削除処理（DBにも反映）
     private func deleteEntry(_ offsets: IndexSet, from sets: [SetEntry]) {
         for index in offsets {
             let entry = sets[index]
+            // 🗑 DBから削除
+            DatabaseManager.shared.deleteWorkout(entry: entry)
+            // 🗑 配列から削除
             if let realIndex = entries.firstIndex(where: { $0.id == entry.id }) {
                 entries.remove(at: realIndex)
             }
