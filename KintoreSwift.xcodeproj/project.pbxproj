@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B3E763612E9394A900906643 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = B3E763602E9394A900906643 /* SQLite */; };
+		B3FF76472E9C98A2005A4EE3 /* FSCalendar in Frameworks */ = {isa = PBXBuildFile; productRef = B3FF76462E9C98A2005A4EE3 /* FSCalendar */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B3E763612E9394A900906643 /* SQLite in Frameworks */,
+				B3FF76472E9C98A2005A4EE3 /* FSCalendar in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,6 +85,7 @@
 				B37829982E823EAC00D0667F /* KintoreSwift */,
 				B37829A62E823EAF00D0667F /* KintoreSwiftTests */,
 				B37829B02E823EB000D0667F /* KintoreSwiftUITests */,
+				B3FF76452E9C98A2005A4EE3 /* Frameworks */,
 				B37829972E823EAC00D0667F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -95,6 +98,13 @@
 				B37829AD2E823EB000D0667F /* KintoreSwiftUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B3FF76452E9C98A2005A4EE3 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -118,6 +128,7 @@
 			name = KintoreSwift;
 			packageProductDependencies = (
 				B3E763602E9394A900906643 /* SQLite */,
+				B3FF76462E9C98A2005A4EE3 /* FSCalendar */,
 			);
 			productName = KintoreSwift;
 			productReference = B37829962E823EAC00D0667F /* KintoreSwift.app */;
@@ -203,6 +214,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				B3E7635F2E9394A900906643 /* XCRemoteSwiftPackageReference "SQLite" */,
+				B3FF76412E9C8F85005A4EE3 /* XCRemoteSwiftPackageReference "FSCalendar" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B37829972E823EAC00D0667F /* Products */;
@@ -569,6 +581,14 @@
 				minimumVersion = 0.15.4;
 			};
 		};
+		B3FF76412E9C8F85005A4EE3 /* XCRemoteSwiftPackageReference "FSCalendar" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/WenchaoD/FSCalendar";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.8.4;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -576,6 +596,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B3E7635F2E9394A900906643 /* XCRemoteSwiftPackageReference "SQLite" */;
 			productName = SQLite;
+		};
+		B3FF76462E9C98A2005A4EE3 /* FSCalendar */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B3FF76412E9C8F85005A4EE3 /* XCRemoteSwiftPackageReference "FSCalendar" */;
+			productName = FSCalendar;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

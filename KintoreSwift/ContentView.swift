@@ -1,279 +1,191 @@
+//ContentView.Swift
+
 import SwiftUI
 import Charts
 
-struct SetEntry: Identifiable, Hashable {
-    let id: Int64        // ← DBの id をここで管理
-    let date: Date
-    let bodyPart: String
-    let exercise: String
-    let weight: Double
-    let reps: Int
-}
-
-
-enum GroupingType: String, CaseIterable {
-    case day = "日ごと"
-    case week = "週ごと"
-    case month = "月ごと"
-}
-
 struct ContentView: View {
-    @State private var exerciseCategories: [String: [String]] = [
-        "胸": ["ベンチプレス", "インクラインベンチプレス", "ケーブルフライ"],
-        "背中": ["デッドリフト", "懸垂", "ラットプルダウン"],
-        "肩": ["ショルダープレス", "サイドレイズ", "リアレイズ"],
-        "腕": ["アームカール", "ハンマーカール", "ディップス"],
-        "脚": ["スクワット", "ブルガリアンスクワット", "レッグプレス"],
-        "腹筋": ["クランチ", "レッグレイズ", "プランク"]
-    ]
-
+    @State private var selectedDate = Date()
     @State private var selectedBodyPart = "胸"
     @State private var selectedExercise = "ベンチプレス"
     @State private var weightText = ""
     @State private var repsText = ""
     @State private var entries: [SetEntry] = []
+    @State private var chartGrouping: GroupingType = .day
+    @State private var showingHistory = false
 
-    @State private var selectedDate = Date()
-    @State private var grouping: GroupingType = .day
+    // 🔥 追加（前回比表示用）
+    @State private var lastRecord: SetEntry? = nil
+    @State private var diffText: String = ""
+    @State private var diffColor: Color = .secondary
 
-    @State private var showingAddBodyPart = false
-    @State private var newBodyPart = ""
-    @State private var showingAddExercise = false
-    @State private var newExercise = ""
+    let bodyParts = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
+    let exercises: [String: [String]] = [
+        "胸": ["ベンチプレス", "インクラインベンチプレス", "ケーブルだっちゅーの"],
+        "背中": ["チンニング", "ワンハンドロー", "Tバーロウ", "ラットプルダウン（ナロー）"],
+        "脚": ["スクワット", "ブルガリアンスクワット", "レッグプレス", "アダクター"],
+        "肩": ["ショルダープレス", "サイドレイズ", "リアレイズ"],
+        "腕": ["インクラインアームカール", "ハンマーカール", "ディップス", "ワンハンドオーバーエクステンション"],
+        "腹筋": ["クランチ", "レッグレイズ", "アブローラー"]
+    ]
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                // 日付選択
-                DatePicker("日付", selection: $selectedDate, displayedComponents: .date)
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 16) {
+
+                    // 🗓 カレンダー
+                    CalendarView(selectedDate: $selectedDate, markedDates: entries.map { $0.date })
+                        .frame(height: 340)
+                        .padding(.top, 8)
+
+                    // 🏋️ 部位選択ボタン
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack {
+                            ForEach(bodyParts, id: \.self) { part in
+                                Button(action: {
+                                    selectedBodyPart = part
+                                    selectedExercise = exercises[part]?.first ?? ""
+                                }) {
+                                    Text(part)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(selectedBodyPart == part ? Color.blue : Color.gray.opacity(0.2))
+                                        .foregroundColor(selectedBodyPart == part ? .white : .primary)
+                                        .cornerRadius(10)
+                                }
+                            }
+                        }.padding(.horizontal)
+                    }
+
+                    // 🏋️‍♀️ 種目選択
+                    HStack {
+                        Picker("種目", selection: $selectedExercise) {
+                            ForEach(exercises[selectedBodyPart] ?? [], id: \.self) { ex in
+                                Text(ex)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: selectedExercise) { newExercise in
+                            updateLastRecord(for: newExercise)
+                        }
+
+                        Spacer()
+
+                        // ➕ 種目追加（将来用）
+                        Button(action: {}) {
+                            Image(systemName: "plus.circle")
+                                .foregroundColor(.blue)
+                                .font(.title3)
+                        }
+                    }
                     .padding(.horizontal)
 
-                // 部位選択
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach(Array(exerciseCategories.keys), id: \.self) { part in
-                            Button(action: {
-                                selectedBodyPart = part
-                                // ✅ 部位を切り替えたときに最初の種目を自動選択
-                                if let firstExercise = exerciseCategories[part]?.first {
-                                    selectedExercise = firstExercise
-                                } else {
-                                    selectedExercise = ""
-                                }
-                            }) {
-                                Text(part)
-                                    .padding(8)
-                                    .background(selectedBodyPart == part ? Color.blue : Color.gray.opacity(0.3))
-                                    .foregroundColor(.white)
-                                    .cornerRadius(8)
-                            }
-                        }
-                        Button(action: { showingAddBodyPart = true }) {
-                            Image(systemName: "plus.circle")
-                        }
+                    // 🧾 前回比表示
+                    if !diffText.isEmpty {
+                        Text(diffText)
+                            .font(.subheadline)
+                            .foregroundColor(diffColor)
+                            .bold()
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
-                }
-                .padding(.horizontal)
 
-                // 種目選択
-                HStack {
-                    Picker("種目", selection: $selectedExercise) {
-                        ForEach(exerciseCategories[selectedBodyPart] ?? [], id: \.self) { e in
-                            Text(e)
-                        }
+                    // 📅 履歴ボタン
+                    Button(action: { showingHistory = true }) {
+                        Label("過去の記録を見る", systemImage: "clock.arrow.circlepath")
+                            .foregroundColor(.blue)
                     }
-                    Button(action: { showingAddExercise = true }) {
-                        Image(systemName: "plus.circle")
+                    .sheet(isPresented: $showingHistory) {
+                        HistoryView(entries: entries.filter { $0.exercise == selectedExercise },
+                                    exerciseName: selectedExercise)
                     }
-                }
-                .padding(.horizontal)
 
-                // 入力フォーム
-                VStack(alignment: .leading, spacing: 8) {
-                    TextField("重量 (kg)", text: $weightText)
-                        .keyboardType(.decimalPad)
-                        .textFieldStyle(.roundedBorder)
+                    // ⚖️ 入力フォーム
+                    VStack {
+                        TextField("重量 (kg)", text: $weightText)
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
 
-                    TextField("回数", text: $repsText)
-                        .keyboardType(.numberPad)
-                        .textFieldStyle(.roundedBorder)
+                        TextField("回数", text: $repsText)
+                            .keyboardType(.numberPad)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
 
-                    Button("このセットを追加") {
-                        if let w = Double(weightText), let r = Int(repsText), w > 0, r > 0 {
-                            // ✅ DBに追加
-                            DatabaseManager.shared.insertWorkout(
-                                date: selectedDate,
-                                bodyPart: selectedBodyPart,
-                                exercise: selectedExercise,
-                                weight: w,
-                                reps: r
-                            )
-
-                            // ✅ DBから最新データを取得
-                            entries = DatabaseManager.shared.fetchAll()
-
-                            // 入力リセット
-                            weightText = ""
-                            repsText = ""
-
-                            print("✅ 新しいデータをDBに追加しました")
+                        Button(action: addSet) {
+                            Text("このセットを追加")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.gray)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
                         }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.gray)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                }
-                .padding(.horizontal)
+                    .padding(.horizontal)
 
-                // グラフ表示
-                Picker("集計", selection: $grouping) {
-                    ForEach(GroupingType.allCases, id: \.self) { g in
-                        Text(g.rawValue).tag(g)
+                    // 📈 グラフ
+                    Picker("Grouping", selection: $chartGrouping) {
+                        Text("日ごと").tag(GroupingType.day)
+                        Text("週ごと").tag(GroupingType.week)
+                        Text("月ごと").tag(GroupingType.month)
                     }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+
+                    ChartView(entries: entries, grouping: chartGrouping)
+                        .frame(height: 220)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
-                Chart {
-                    ForEach(groupedData(), id: \.0) { (date, totalWeight, totalSets, totalReps) in
-                        LineMark(
-                            x: .value("日付", date),
-                            y: .value("合計重量 (kg×rep)", totalWeight),
-                            series: .value("種類", "合計重量")
-                        )
-                        .foregroundStyle(.blue)
-                        .symbol(.circle)
-
-                        LineMark(
-                            x: .value("日付", date),
-                            y: .value("セット数", totalSets),
-                            series: .value("種類", "セット数")
-                        )
-                        .foregroundStyle(.green)
-                        .symbol(.circle)
-
-                        LineMark(
-                            x: .value("日付", date),
-                            y: .value("合計回数", totalReps),
-                            series: .value("種類", "合計回数")
-                        )
-                        .foregroundStyle(.red)
-                        .symbol(.circle)
-                    }
-                }
-                .chartForegroundStyleScale([
-                    "合計重量": .blue,
-                    "セット数": .green,
-                    "合計回数": .red
-                ])
-                .chartLegend(position: .bottom)
-                .frame(height: 200)
-                .padding(.horizontal)
-
-                // 記録リスト（日付＋種目ごとにセット数リセット）
-                let todaysEntries = entries.filter { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }
-                if todaysEntries.isEmpty {
-                    Text("この日には記録がありません")
-                        .foregroundColor(.secondary)
-                } else {
-                    List {
-                        ForEach(groupedEntriesByExercise(entries: todaysEntries), id: \.0) { (exercise, sets) in
-                            Section(header: Text("\(sets.first?.bodyPart ?? "") - \(exercise)")) {
-                                ForEach(Array(sets.enumerated()), id: \.element.id) { index, e in
-                                    Text("\(index + 1)sets: \(Int(e.weight)) kg × \(e.reps) 回")
-                                        .foregroundColor(.secondary)
-                                }
-                                .onDelete { offsets in
-                                    deleteEntry(offsets, from: sets)
-                                }
-                            }
-                        }
-                    }
-                }
+                .padding(.bottom, 32)
             }
             .navigationTitle("Workout")
             .onAppear {
-                // ✅ 起動時にDBからデータを読み込む
                 entries = DatabaseManager.shared.fetchAll()
-                print("📦 DBからデータを読み込みました（\(entries.count)件）")
-            }
-
-            // 部位追加アラート
-            .alert("新しい部位を追加", isPresented: $showingAddBodyPart) {
-                TextField("部位名", text: $newBodyPart)
-                Button("追加") {
-                    if !newBodyPart.isEmpty {
-                        exerciseCategories[newBodyPart] = []
-                        selectedBodyPart = newBodyPart
-                        newBodyPart = ""
-                    }
-                }
-                Button("キャンセル", role: .cancel) {}
-            }
-
-            // 種目追加アラート
-            .alert("新しい種目を追加", isPresented: $showingAddExercise) {
-                TextField("種目名", text: $newExercise)
-                Button("追加") {
-                    if !newExercise.isEmpty {
-                        exerciseCategories[selectedBodyPart, default: []].append(newExercise)
-                        selectedExercise = newExercise
-                        newExercise = ""
-                    }
-                }
-                Button("キャンセル", role: .cancel) {}
+                updateLastRecord(for: selectedExercise)
             }
         }
     }
 
-    // 日付＋種目ごとにグループ化
-    private func groupedEntriesByExercise(entries: [SetEntry]) -> [(String, [SetEntry])] {
-        let grouped = Dictionary(grouping: entries) { $0.exercise }
-        return grouped.map { ($0.key, $0.value) }
+    // MARK: - 関数群
+    private func addSet() {
+        guard let weight = Double(weightText),
+              let reps = Int(repsText),
+              !selectedExercise.isEmpty else { return }
+
+        DatabaseManager.shared.insert(
+            date: selectedDate,
+            bodyPart: selectedBodyPart,
+            exercise: selectedExercise,
+            weight: weight,
+            reps: reps
+        )
+        entries = DatabaseManager.shared.fetchAll()
+        weightText = ""
+        repsText = ""
+        updateLastRecord(for: selectedExercise)
     }
 
-    // データ集計（日・週・月）
-    private func groupedData() -> [(Date, Double, Int, Int)] {
-        var grouped: [Date: (Double, Int, Int)] = [:]
-        let calendar = Calendar.current
+    // 🔥 前回比を計算する
+    private func updateLastRecord(for exercise: String) {
+        guard !exercise.isEmpty else { return }
+        if let last = DatabaseManager.shared.fetchLastRecord(for: exercise) {
+            lastRecord = last
+            if let latest = entries.filter({ $0.exercise == exercise }).max(by: { $0.date < $1.date }) {
+                let weightDiff = Int(latest.weight - last.weight)
+                let repsDiff = latest.reps - last.reps
 
-        for e in entries {
-            let key: Date
-            switch grouping {
-            case .day:
-                key = calendar.startOfDay(for: e.date)
-            case .week:
-                key = calendar.dateInterval(of: .weekOfYear, for: e.date)!.start
-            case .month:
-                key = calendar.dateInterval(of: .month, for: e.date)!.start
+                diffText = "前回比: \(weightDiff >= 0 ? "+" : "")\(weightDiff)kg / \(repsDiff >= 0 ? "+" : "")\(repsDiff)回"
+                diffColor = (weightDiff > 0 || repsDiff > 0)
+                    ? .green
+                    : (weightDiff < 0 || repsDiff < 0)
+                        ? .red
+                        : .gray
             }
-            let weight = e.weight * Double(e.reps)
-            grouped[key, default: (0, 0, 0)] = (
-                grouped[key, default: (0, 0, 0)].0 + weight,
-                grouped[key, default: (0, 0, 0)].1 + 1,
-                grouped[key, default: (0, 0, 0)].2 + e.reps
-            )
-        }
-        return grouped.map { ($0.key, $0.value.0, $0.value.1, $0.value.2) }
-            .sorted { $0.0 < $1.0 }
-    }
-
-    // 削除処理（DBにも反映）
-    private func deleteEntry(_ offsets: IndexSet, from sets: [SetEntry]) {
-        for index in offsets {
-            let entry = sets[index]
-            // 🗑 DBから削除
-            DatabaseManager.shared.deleteWorkout(entry: entry)
-            // 🗑 配列から削除
-            if let realIndex = entries.firstIndex(where: { $0.id == entry.id }) {
-                entries.remove(at: realIndex)
-            }
+        } else {
+            diffText = "前回記録なし"
+            diffColor = .secondary
         }
     }
 }
 
-#Preview {
-    ContentView()
+// MARK: - グルーピングタイプ
+enum GroupingType: String, CaseIterable, Identifiable {
+    case day, week, month
+    var id: String { rawValue }
 }
