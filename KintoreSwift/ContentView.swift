@@ -65,9 +65,10 @@ struct ContentView: View {
                             }
                         }
                         .pickerStyle(.menu)
-                        .onChange(of: selectedExercise) { newExercise in
-                            updateLastRecord(for: newExercise)
+                        .onChange(of: selectedExercise, initial: true) { _, newValue in
+                            updateLastRecord(for: newValue)
                         }
+
 
                         Spacer()
 
