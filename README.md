@@ -1,28 +1,27 @@
 # 🏋️‍♂️ KintoreSwift
 
-SwiftUI × Charts × FSCalendar で作る、筋トレ記録アプリ。  
-日ごとのトレーニング内容を記録し、グラフやカレンダーで振り返ることができます。
+**KintoreSwift** は、筋トレの記録と成長を可視化するためのiOSアプリです。  
+シンプルなUIでトレーニング内容を記録し、グラフやカレンダーで進捗を確認できます。  
 
 ---
 
-## 📱 主な機能
+## 📱 スクリーンショット
+| ホーム画面 | カレンダー | グラフ |
+|-------------|-------------|--------|
+| ![Workout](screenshots/workout.png) | ![Calendar](screenshots/calendar.png) | ![Chart](screenshots/chart.png) |
 
-- 🗓 **カレンダー表示（FSCalendar）**  
-  記録がある日は青くマーク。日付をタップしてトレーニング履歴を確認。
+（※ スクショは `KintoreSwift/screenshots/` に保存してください）
 
-- 💪 **部位・種目の切り替え**  
-  「胸・背中・脚・肩・腕・腹筋」などのカテゴリから選択可能。
+---
 
-- 📊 **折れ線グラフ（Charts）**  
-  日・週・月ごとに平均重量を集計して可視化。  
-  進捗をひと目で確認できます。
+## ✨ 主な機能
 
-- 🔁 **前回比の表示**  
-  同じ種目の前回データと比較し、増減をわかりやすく表示。
-
-- 🕓 **履歴画面（HistoryView）**  
-  種目ごとの全セット記録を一覧化。  
-  平均・最大重量、総レップ数も自動集計。
+- 📆 **カレンダー表示**：トレーニングした日は青くハイライト  
+- 🏋️‍♀️ **種目・部位別の記録**：ベンチプレスやスクワットなど自由に追加可能  
+- 📊 **折れ線グラフ**：日・週・月ごとの進捗を可視化  
+- ⏱ **前回比の自動表示**：重量・回数の増減を色で表示  
+- 📖 **履歴画面**：種目ごとの過去データを一目で確認  
+- 🗑 **削除機能**：不要なセットをスワイプで削除  
 
 ---
 
@@ -30,29 +29,46 @@ SwiftUI × Charts × FSCalendar で作る、筋トレ記録アプリ。
 
 | 分類 | 技術 |
 |------|------|
-| 言語 | Swift, SwiftUI |
-| データベース | CoreData（または SQLite予定） |
-| UIライブラリ | [FSCalendar](https://github.com/WenchaoD/FSCalendar) |
-| グラフ描画 | [Swift Charts](https://developer.apple.com/documentation/charts) |
+| フレームワーク | SwiftUI |
+| データベース | SQLite.swift |
+| グラフ表示 | Swift Charts |
+| カレンダー | FSCalendar |
+| 言語 | Swift 5 |
 | 開発環境 | Xcode 16 / iOS 18 |
 
 ---
 
-## 📷 スクリーンショット
+## 🗂 ディレクトリ構成
+KintoreSwift/
+├── Assets.xcassets/ # アプリアイコン・画像管理
+├── CalendarView.swift # カレンダー表示
+├── ChartView.swift # グラフ表示
+├── ContentView.swift # メイン画面
+├── DatabaseManager.swift # SQLite管理
+├── HistoryView.swift # 履歴画面
+├── LaunchScreen.storyboard # 起動画面
+└── screenshots/ # スクリーンショット画像
 
-| カレンダー画面 | 履歴画面 |
-|----------------|-----------|
-| ![calendar](screenshots/calendar.png) | ![history](screenshots/history.png) |
-
-※ `screenshots/` フォルダに画像を追加して表示できます。
 
 ---
 
-## 🚀 今後の予定
+## 🚀 今後のアップデート予定
 
-- [ ] 各種目ごとのPR（個別グラフ）追加  
-- [ ] iCloud連携  
-- [ ] ダークモード対応  
-- [ ] データエクスポート（CSV）  
-- [ ] キャラ育成モード（Kintoreキャラ成長）
+- 🔔 通知機能：トレーニングリマインダー
+- 💾 iCloudバックアップ対応
+- 🧍 キャラクター育成要素（成長に応じて変化）
+- 🌐 多言語対応（日本語 / 英語）
+
+
+---
+
+## 🧠 コンセプト
+
+> 筋トレの成長を「データ」と「キャラクター」で楽しむ。
+
+ただの記録ではなく、**自分の成長を見てモチベーションを上げる**アプリです。
+
+---
+
+
 
