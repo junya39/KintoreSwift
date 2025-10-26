@@ -11,21 +11,34 @@ struct ChartView: View {
         let groupedData = groupedEntries()
 
         Chart {
-            ForEach(groupedData, id: \.0) { (date, avgWeight) in
+            ForEach(groupedData, id: \.0) { (date, maxWeight, isBodyweight) in
+                // 折れ線（通常 or 自重で色を変える）
                 LineMark(
                     x: .value("日付", date),
-                    y: .value("平均重量(kg)", avgWeight)
+                    y: .value("最大重量(kg)", maxWeight)
                 )
-                .foregroundStyle(.blue)
+                .foregroundStyle(isBodyweight ? .gray : .blue)
                 .symbol(Circle())
                 .lineStyle(.init(lineWidth: 3))
                 .interpolationMethod(.catmullRom)
 
+                // 各ポイント（自重の場合ラベルを表示）
                 PointMark(
                     x: .value("日付", date),
-                    y: .value("平均重量(kg)", avgWeight)
+                    y: .value("最大重量(kg)", maxWeight)
                 )
-                .foregroundStyle(.blue)
+                .foregroundStyle(isBodyweight ? .gray : .blue)
+                .annotation(position: .top) {
+                    if isBodyweight {
+                        Text("自重")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    } else {
+                        Text("\(Int(maxWeight))kg")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
         }
         .frame(height: 220)
@@ -35,7 +48,7 @@ struct ChartView: View {
         }
         .chartXAxis {
             AxisMarks(values: groupedData.map { $0.0 }) { value in
-                AxisGridLine() // グリッド線（縦線）
+                AxisGridLine()
                 AxisValueLabel {
                     if let date = value.as(Date.self) {
                         Text(formatDate(date))
@@ -45,12 +58,13 @@ struct ChartView: View {
                 }
             }
         }
-        .padding(.bottom, 8) // X軸ラベルとグラフの間に少し余白
+        .padding(.bottom, 8)
     }
 
-    // ✅ 各日ごとに「平均重量」を算出
-    private func groupedEntries() -> [(Date, Double)] {
+    // ✅ 各日ごとに「最大重量」を算出（自重フラグ付き）
+    private func groupedEntries() -> [(Date, Double, Bool)] {
         var grouped: [Date: [Double]] = [:]
+        var isBodyweightFlags: [Date: Bool] = [:]
         let calendar = Calendar.current
 
         for e in entries {
@@ -65,10 +79,17 @@ struct ChartView: View {
             }
 
             grouped[key, default: []].append(e.weight)
+            // ✅ weight=0ならその日のデータを「自重」として扱う
+            if e.weight == 0 {
+                isBodyweightFlags[key] = true
+            }
         }
 
+        // 🔹 各日の「最大重量」を使用
         return grouped.map { (key, weights) in
-            (key, weights.reduce(0, +) / Double(weights.count))
+            let maxWeight = weights.max() ?? 0
+            let isBody = isBodyweightFlags[key] ?? false
+            return (key, maxWeight, isBody)
         }
         .sorted { $0.0 < $1.0 }
     }
@@ -79,3 +100,4 @@ struct ChartView: View {
         return f.string(from: date)
     }
 }
+
