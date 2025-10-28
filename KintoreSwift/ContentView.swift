@@ -1,4 +1,5 @@
-//  ContentView.swift
+// ContentView.swift
+
 import SwiftUI
 import Charts
 
@@ -12,34 +13,30 @@ struct ContentView: View {
     @State private var isBodyweight = false
 
     @State private var entries: [SetEntry] = []
+    @State private var exercises: [String: [String]] = [:] // ← SQLiteから読み込む
     @State private var chartGrouping: GroupingType = .day
     @State private var showingHistory = false
+
+    // 新種目追加
+    @State private var showingAddExercise = false
+    @State private var newExerciseName = ""
 
     // 前回比
     @State private var diffText: String = ""
     @State private var diffColor: Color = .secondary
 
     let bodyParts = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
-    let exercises: [String: [String]] = [
-        "胸": ["ベンチプレス", "インクラインベンチプレス", "ケーブルだっちゅーの"],
-        "背中": ["チンニング", "ワンハンドロー", "Tバーロウ", "ラットプルダウン（ナロー）"],
-        "脚": ["スクワット", "ブルガリアンスクワット", "レッグプレス", "アダクター"],
-        "肩": ["ショルダープレス", "サイドレイズ", "リアレイズ"],
-        "腕": ["インクラインアームカール", "ハンマーカール", "ディップス", "ワンハンドオーバーエクステンション"],
-        "腹筋": ["クランチ", "レッグレイズ", "アブローラー"]
-    ]
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 16) {
-
-                    // 🗓 カレンダー
+                    // ✅ カレンダー
                     CalendarView(selectedDate: $selectedDate, markedDates: entries.map { $0.date })
                         .frame(height: 340)
                         .padding(.top, 8)
 
-                    // 🏋️ 部位
+                    // ✅ 部位ボタン
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack {
                             ForEach(bodyParts, id: \.self) { part in
@@ -56,11 +53,10 @@ struct ContentView: View {
                                         .cornerRadius(10)
                                 }
                             }
-                        }
-                        .padding(.horizontal)
+                        }.padding(.horizontal)
                     }
 
-                    // 🏋️‍♀️ 種目
+                    // ✅ 種目選択 + 追加
                     HStack {
                         Picker("種目", selection: $selectedExercise) {
                             ForEach(exercises[selectedBodyPart] ?? [], id: \.self) { ex in
@@ -73,7 +69,9 @@ struct ContentView: View {
                         }
 
                         Spacer()
-                        Button { } label: {
+                        Button {
+                            showingAddExercise = true
+                        } label: {
                             Image(systemName: "plus.circle")
                                 .foregroundColor(.blue)
                                 .font(.title3)
@@ -81,7 +79,18 @@ struct ContentView: View {
                     }
                     .padding(.horizontal)
 
-                    // 📊 前回比
+                    // ✅ 新種目追加ダイアログ
+                    .alert("新しい種目を追加", isPresented: $showingAddExercise) {
+                        TextField("種目名を入力", text: $newExerciseName)
+                        Button("追加") {
+                            addNewExercise()
+                        }
+                        Button("キャンセル", role: .cancel) { }
+                    } message: {
+                        Text("\(selectedBodyPart) に新しい種目を追加します")
+                    }
+
+                    // ✅ 前回比
                     if !diffText.isEmpty {
                         Text(diffText)
                             .font(.subheadline)
@@ -90,21 +99,17 @@ struct ContentView: View {
                             .frame(maxWidth: .infinity)
                     }
 
-                    // 🕒 過去の記録へ
+                    // ✅ 履歴画面へ
                     Button { showingHistory = true } label: {
                         Label("過去の記録を見る", systemImage: "clock.arrow.circlepath")
                             .foregroundColor(.blue)
                     }
                     .sheet(isPresented: $showingHistory) {
-                        // ✅ カレンダー選択日だけの履歴を表示
-                        HistoryView(
-                            entries: entries.filter { $0.exercise == selectedExercise },
-                            exerciseName: selectedExercise,
-                            selectedDate: selectedDate
-                        )
+                        HistoryView(entries: entries.filter { $0.exercise == selectedExercise },
+                                    exerciseName: selectedExercise)
                     }
 
-                    // ⚖️ 入力フォーム
+                    // ✅ 入力フォーム
                     VStack(alignment: .leading, spacing: 10) {
                         Toggle("自重トレーニング", isOn: $isBodyweight)
                             .toggleStyle(SwitchToggleStyle(tint: .blue))
@@ -137,7 +142,7 @@ struct ContentView: View {
                         .padding(.horizontal)
                     }
 
-                    // 📈 グラフ
+                    // ✅ グラフ
                     Picker("Grouping", selection: $chartGrouping) {
                         Text("日ごと").tag(GroupingType.day)
                         Text("週ごと").tag(GroupingType.week)
@@ -153,13 +158,34 @@ struct ContentView: View {
             }
             .navigationTitle("Workout")
             .onAppear {
+                DatabaseManager.shared.createExerciseTableIfNeeded()
+                exercises = DatabaseManager.shared.fetchExercisesByBodyPart()
                 entries = DatabaseManager.shared.fetchAll()
                 updateLastDiff()
             }
         }
     }
 
-    // MARK: - セット追加処理
+    // ✅ 新しい種目を追加してDBに保存
+    private func addNewExercise() {
+        guard !newExerciseName.isEmpty else { return }
+
+        // SQLite保存
+        DatabaseManager.shared.insertExercise(name: newExerciseName, bodyPart: selectedBodyPart)
+
+        // メモリ上でも即反映
+        if var list = exercises[selectedBodyPart] {
+            list.append(newExerciseName)
+            exercises[selectedBodyPart] = list
+        } else {
+            exercises[selectedBodyPart] = [newExerciseName]
+        }
+
+        selectedExercise = newExerciseName
+        newExerciseName = ""
+    }
+
+    // ✅ セットを追加
     private func addSet() {
         let weight = isBodyweight ? 0.0 : (Double(weightText) ?? 0.0)
         guard let reps = Int(repsText), !selectedExercise.isEmpty else { return }
@@ -173,16 +199,12 @@ struct ContentView: View {
             note: note.isEmpty ? nil : note
         )
 
-        // 再読み込み
         entries = DatabaseManager.shared.fetchAll()
-        weightText = ""
-        repsText = ""
-        note = ""
-        isBodyweight = false
+        weightText = ""; repsText = ""; note = ""; isBodyweight = false
         updateLastDiff()
     }
 
-    // MARK: - 前回比更新
+    // ✅ 前回比更新
     private func updateLastDiff() {
         let recs = DatabaseManager.shared.fetchLastTwoRecords(for: selectedExercise)
         guard recs.count == 2 else {
@@ -190,9 +212,9 @@ struct ContentView: View {
             diffColor = .secondary
             return
         }
-
         let latest = recs[0]
         let prev = recs[1]
+
         let wDiff = Int(latest.weight - prev.weight)
         let rDiff = latest.reps - prev.reps
 
@@ -202,11 +224,7 @@ struct ContentView: View {
         let rText = "\(rDiff >= 0 ? "+" : "")\(rDiff)回"
 
         diffText = "前回比: \(wText) / \(rText)"
-        diffColor = (wDiff > 0 || rDiff > 0)
-            ? .green
-            : (wDiff < 0 || rDiff < 0)
-                ? .red
-                : .gray
+        diffColor = (wDiff > 0 || rDiff > 0) ? .green : (wDiff < 0 || rDiff < 0) ? .red : .gray
     }
 }
 
@@ -215,4 +233,3 @@ enum GroupingType: String, CaseIterable, Identifiable {
     case day, week, month
     var id: String { rawValue }
 }
-

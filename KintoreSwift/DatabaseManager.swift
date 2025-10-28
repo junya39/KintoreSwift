@@ -4,87 +4,133 @@ import Foundation
 import SQLite3
 
 struct SetEntry: Identifiable {
-    let id: Int64
+    let id: Int
     let date: Date
     let bodyPart: String
     let exercise: String
     let weight: Double
     let reps: Int
-    let note: String?    // ← すでに追加済み前提
+    let note: String?
 }
 
-final class DatabaseManager {
+class DatabaseManager {
     static let shared = DatabaseManager()
     private var db: OpaquePointer?
 
     private init() {
-        db = open()
-        createTable()
-        addNoteColumnIfNeeded()
+        openDatabase()
+        createTables()
     }
 
-    // MARK: - Open DB
-    private func open() -> OpaquePointer? {
-        if db != nil { return db }
-        var dbPointer: OpaquePointer?
+    private func openDatabase() {
         let fileURL = try! FileManager.default
-            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
-            .appendingPathComponent("workouts.sqlite")
-        if sqlite3_open(fileURL.path, &dbPointer) == SQLITE_OK {
-            print("✅ Database opened at: \(fileURL.path)")
-            return dbPointer
+            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("kintore.db")
+
+        if sqlite3_open(fileURL.path, &db) != SQLITE_OK {
+            print("❌ データベースを開けません")
         } else {
-            print("❌ Failed to open database")
-            return nil
+            print("✅ データベースを開きました: \(fileURL.path)")
         }
     }
 
-    // MARK: - Create / Migrate
-    private func createTable() {
-        let sql = """
-        CREATE TABLE IF NOT EXISTS workouts(
+    private func createTables() {
+        let createTableQuery = """
+        CREATE TABLE IF NOT EXISTS sets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
             bodyPart TEXT,
             exercise TEXT,
             weight REAL,
-            reps INTEGER
+            reps INTEGER,
+            note TEXT
         );
         """
+        if sqlite3_exec(db, createTableQuery, nil, nil, nil) != SQLITE_OK {
+            print("❌ sets テーブル作成失敗")
+        }
+
+        // ✅ 新しく「exercises」テーブルも作成
+        createExerciseTableIfNeeded()
+    }
+
+    // MARK: - 新機能: 種目テーブルを作成
+    func createExerciseTableIfNeeded() {
+        let query = """
+        CREATE TABLE IF NOT EXISTS exercises (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            bodyPart TEXT NOT NULL
+        );
+        """
+        if sqlite3_exec(db, query, nil, nil, nil) != SQLITE_OK {
+            print("❌ exercises テーブル作成失敗")
+        } else {
+            print("✅ exercises テーブル確認完了")
+        }
+    }
+
+    // MARK: - 新機能: 種目を追加
+    func insertExercise(name: String, bodyPart: String) {
+        let query = "INSERT INTO exercises (name, bodyPart) VALUES (?, ?);"
         var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            _ = sqlite3_step(stmt)
-            print("✅ workouts table ready")
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (name as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 2, (bodyPart as NSString).utf8String, -1, nil)
+
+            if sqlite3_step(stmt) == SQLITE_DONE {
+                print("✅ 新しい種目を追加: \(bodyPart) - \(name)")
+            } else {
+                print("❌ 種目の追加失敗")
+            }
         }
         sqlite3_finalize(stmt)
     }
 
-    private func addNoteColumnIfNeeded() {
-        // 既にあるかチェック
+    // MARK: - 新機能: 部位ごとの種目リストを取得
+    func fetchExercisesByBodyPart() -> [String: [String]] {
+        var result: [String: [String]] = [:]
+        let query = "SELECT name, bodyPart FROM exercises ORDER BY id ASC;"
         var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, "PRAGMA table_info(workouts);", -1, &stmt, nil) == SQLITE_OK {
-            var hasNote = false
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                let name = String(cString: sqlite3_column_text(stmt, 1))
-                if name == "note" { hasNote = true; break }
-            }
-            sqlite3_finalize(stmt)
 
-            if !hasNote {
-                if sqlite3_exec(db, "ALTER TABLE workouts ADD COLUMN note TEXT;", nil, nil, nil) == SQLITE_OK {
-                    print("🧱 Added missing column: note")
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let namePtr = sqlite3_column_text(stmt, 0),
+                   let bodyPartPtr = sqlite3_column_text(stmt, 1) {
+                    let name = String(cString: namePtr)
+                    let bodyPart = String(cString: bodyPartPtr)
+                    result[bodyPart, default: []].append(name)
                 }
-            } else {
-                print("✅ workouts table ready (includes note column in schema)")
             }
         }
+        sqlite3_finalize(stmt)
+
+        // ✅ 初期値がまだない部位にはデフォルト種目をセット
+        let defaults: [String: [String]] = [
+            "胸": ["ベンチプレス", "インクラインベンチプレス", "ケーブルだっちゅーの"],
+            "背中": ["チンニング", "ワンハンドロー", "Tバーロウ", "ラットプルダウン（ナロー）"],
+            "脚": ["スクワット", "ブルガリアンスクワット", "レッグプレス", "アダクター"],
+            "肩": ["ショルダープレス", "サイドレイズ", "リアレイズ"],
+            "腕": ["インクラインアームカール", "ハンマーカール", "ディップス", "ワンハンドオーバーエクステンション"],
+            "腹筋": ["クランチ", "レッグレイズ", "アブローラー"]
+        ]
+
+        for (part, items) in defaults {
+            if result[part] == nil || result[part]!.isEmpty {
+                result[part] = items
+            }
+        }
+
+        return result
     }
 
-    // MARK: - Insert
-    func insert(date: Date, bodyPart: String, exercise: String, weight: Double, reps: Int, note: String? = nil) {
-        let sql = "INSERT INTO workouts (date, bodyPart, exercise, weight, reps, note) VALUES (?, ?, ?, ?, ?, ?);"
+    // MARK: - セットを追加
+    func insert(date: Date, bodyPart: String, exercise: String, weight: Double, reps: Int, note: String?) {
+        let query = "INSERT INTO sets (date, bodyPart, exercise, weight, reps, note) VALUES (?, ?, ?, ?, ?, ?);"
         var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
             let dateString = ISO8601DateFormatter().string(from: date)
             sqlite3_bind_text(stmt, 1, (dateString as NSString).utf8String, -1, nil)
             sqlite3_bind_text(stmt, 2, (bodyPart as NSString).utf8String, -1, nil)
@@ -96,88 +142,61 @@ final class DatabaseManager {
             } else {
                 sqlite3_bind_null(stmt, 6)
             }
+
             if sqlite3_step(stmt) == SQLITE_DONE {
-                print("💾 Inserted: \(exercise) \(weight)kg x \(reps)")
+                print("✅ セット追加完了")
+            } else {
+                print("❌ セット追加失敗")
             }
         }
         sqlite3_finalize(stmt)
     }
 
-    // MARK: - Fetch All
+    // MARK: - 全データ取得
     func fetchAll() -> [SetEntry] {
         var result: [SetEntry] = []
-        let sql = "SELECT id, date, bodyPart, exercise, weight, reps, note FROM workouts ORDER BY id ASC;"
+        let query = "SELECT * FROM sets ORDER BY date DESC;"
         var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
             while sqlite3_step(stmt) == SQLITE_ROW {
-                let id = sqlite3_column_int64(stmt, 0)
-                let dateStr = String(cString: sqlite3_column_text(stmt, 1))
+                let id = Int(sqlite3_column_int(stmt, 0))
+                let dateString = String(cString: sqlite3_column_text(stmt, 1))
+                let date = ISO8601DateFormatter().date(from: dateString) ?? Date()
                 let bodyPart = String(cString: sqlite3_column_text(stmt, 2))
                 let exercise = String(cString: sqlite3_column_text(stmt, 3))
                 let weight = sqlite3_column_double(stmt, 4)
                 let reps = Int(sqlite3_column_int(stmt, 5))
-                let note = sqlite3_column_type(stmt, 6) == SQLITE_NULL ? nil : String(cString: sqlite3_column_text(stmt, 6))
-                let date = ISO8601DateFormatter().date(from: dateStr) ?? Date()
+                let note = sqlite3_column_text(stmt, 6).flatMap { String(cString: $0) }
 
-                result.append(.init(id: id, date: date, bodyPart: bodyPart, exercise: exercise, weight: weight, reps: reps, note: note))
+                result.append(SetEntry(id: id, date: date, bodyPart: bodyPart, exercise: exercise, weight: weight, reps: reps, note: note))
             }
         }
         sqlite3_finalize(stmt)
         return result
     }
 
-    // MARK: - 直近2件を“idの降順”で取得（最新・一つ前）
+    // MARK: - 直近2件
     func fetchLastTwoRecords(for exercise: String) -> [SetEntry] {
-        var items: [SetEntry] = []
-        let sql = """
-        SELECT id, date, bodyPart, exercise, weight, reps, note
-        FROM workouts
-        WHERE exercise = ?
-        ORDER BY id DESC
-        LIMIT 2;
+        var result: [SetEntry] = []
+        let query = """
+        SELECT * FROM sets WHERE exercise = ? ORDER BY id DESC LIMIT 2;
         """
         var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_text(stmt, 1, (exercise as NSString).utf8String, -1, nil)
             while sqlite3_step(stmt) == SQLITE_ROW {
-                let id = sqlite3_column_int64(stmt, 0)
-                let dateStr = String(cString: sqlite3_column_text(stmt, 1))
+                let id = Int(sqlite3_column_int(stmt, 0))
+                let dateString = String(cString: sqlite3_column_text(stmt, 1))
+                let date = ISO8601DateFormatter().date(from: dateString) ?? Date()
                 let bodyPart = String(cString: sqlite3_column_text(stmt, 2))
                 let exercise = String(cString: sqlite3_column_text(stmt, 3))
                 let weight = sqlite3_column_double(stmt, 4)
                 let reps = Int(sqlite3_column_int(stmt, 5))
-                let note = sqlite3_column_type(stmt, 6) == SQLITE_NULL ? nil : String(cString: sqlite3_column_text(stmt, 6))
-                let date = ISO8601DateFormatter().date(from: dateStr) ?? Date()
-                items.append(.init(id: id, date: date, bodyPart: bodyPart, exercise: exercise, weight: weight, reps: reps, note: note))
-            }
-        }
-        sqlite3_finalize(stmt)
-        return items
-    }
+                let note = sqlite3_column_text(stmt, 6).flatMap { String(cString: $0) }
 
-    // （必要なら残す）1つ前だけ欲しいAPIもid基準に修正
-    func fetchLastRecord(for exercise: String) -> SetEntry? {
-        var result: SetEntry?
-        let sql = """
-        SELECT id, date, bodyPart, exercise, weight, reps, note
-        FROM workouts
-        WHERE exercise = ?
-        ORDER BY id DESC
-        LIMIT 1 OFFSET 1;
-        """
-        var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_text(stmt, 1, (exercise as NSString).utf8String, -1, nil)
-            if sqlite3_step(stmt) == SQLITE_ROW {
-                let id = sqlite3_column_int64(stmt, 0)
-                let dateStr = String(cString: sqlite3_column_text(stmt, 1))
-                let bodyPart = String(cString: sqlite3_column_text(stmt, 2))
-                let exercise = String(cString: sqlite3_column_text(stmt, 3))
-                let weight = sqlite3_column_double(stmt, 4)
-                let reps = Int(sqlite3_column_int(stmt, 5))
-                let note = sqlite3_column_type(stmt, 6) == SQLITE_NULL ? nil : String(cString: sqlite3_column_text(stmt, 6))
-                let date = ISO8601DateFormatter().date(from: dateStr) ?? Date()
-                result = .init(id: id, date: date, bodyPart: bodyPart, exercise: exercise, weight: weight, reps: reps, note: note)
+                result.append(SetEntry(id: id, date: date, bodyPart: bodyPart, exercise: exercise, weight: weight, reps: reps, note: note))
             }
         }
         sqlite3_finalize(stmt)
