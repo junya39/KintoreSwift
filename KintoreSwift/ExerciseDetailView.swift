@@ -7,109 +7,173 @@ struct ExerciseDetailView: View {
     let exerciseName: String
     @State private var history: [SetEntry] = []
 
+    @State private var weightInput = ""
+    @State private var repsInput = ""
+    @State private var selectedSide = "R"
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // ✅ タイトル
-            Text("\(exerciseName) の履歴")
-                .font(.title2)
-                .bold()
-                .padding(.horizontal)
-
-            // ✅ 統計表示
-            if !history.isEmpty {
-                let stats = calculateStats(for: history)
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("平均: \(String(format: "%.1f", stats.avg)) kg")
-                        Text("最大: \(Int(stats.max)) kg")
-                        Text("総レップ: \(stats.totalReps)")
-                    }
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    Spacer()
-                }
-                .padding(.horizontal)
-            }
-
-            // ✅ グラフ表示（1日ごとの最大重量を表示）
-            if !history.isEmpty {
-                // 各日の最大重量をまとめる
-                let grouped = Dictionary(grouping: history) { entry in
-                    Calendar.current.startOfDay(for: entry.date)
-                }.mapValues { entries in
-                    entries.map { $0.weight }.max() ?? 0
-                }
-
-                // 日付順にソート
-                let sortedData = grouped.sorted { $0.key < $1.key }
-
-                Chart {
-                    ForEach(sortedData, id: \.key) { date, maxWeight in
-                        LineMark(
-                            x: .value("日付", date),
-                            y: .value("最大重量 (kg)", maxWeight)
-                        )
-                        .symbol(.circle)
-                        .foregroundStyle(.blue)
-
-                        PointMark(
-                            x: .value("日付", date),
-                            y: .value("最大重量 (kg)", maxWeight)
-                        )
-                        .annotation {
-                            Text("\(Int(maxWeight))kg")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                .frame(height: 200)
-                .padding(.horizontal)
-                .chartYAxisLabel("重量 (kg)")
-            }
-
-            // ✅ データなしメッセージ
-            if history.isEmpty {
-                Text("この種目の記録はまだありません。")
-                    .foregroundColor(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                
+                // ✅ デバッグ表示
+                Text("✅ Picker表示テスト")
+                    .foregroundColor(.red)
+                    .font(.caption)
                     .padding(.horizontal)
-            } else {
-                // ✅ 記録リスト
-                List {
-                    ForEach(history.sorted(by: { $0.date > $1.date }), id: \.id) { entry in
+                
+                // タイトル
+                Text("\(exerciseName) の履歴")
+                    .font(.title2)
+                    .bold()
+                    .padding(.horizontal)
+                
+                // 統計表示
+                if !history.isEmpty {
+                    let stats = calculateStats(for: history)
+                    HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.date, style: .date)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Text("\(Int(entry.weight)) kg × \(entry.reps) 回")
-                                .font(.body)
+                            Text("平均: \(String(format: "%.1f", stats.avg)) kg")
+                            Text("最大: \(Int(stats.max)) kg")
+                            Text("総レップ: \(stats.totalReps)")
                         }
-                        .padding(.vertical, 4)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        Spacer()
                     }
+                    .padding(.horizontal)
                 }
-            }
 
-            Spacer()
+                // グラフ
+                if !history.isEmpty {
+                    let grouped = Dictionary(grouping: history) { entry in
+                        Calendar.current.startOfDay(for: entry.date)
+                    }.mapValues { entries in
+                        entries.map { $0.weight }.max() ?? 0
+                    }
+                    let sortedData = grouped.sorted { $0.key < $1.key }
+
+                    Chart {
+                        ForEach(sortedData, id: \.key) { date, maxWeight in
+                            LineMark(
+                                x: .value("日付", date),
+                                y: .value("最大重量 (kg)", maxWeight)
+                            )
+                            .symbol(.circle)
+                            .foregroundStyle(.blue)
+                        }
+                    }
+                    .frame(height: 200)
+                    .padding(.horizontal)
+                }
+
+                // 履歴リスト
+                if history.isEmpty {
+                    Text("この種目の記録はまだありません。")
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(history.sorted(by: { $0.date > $1.date }), id: \.id) { entry in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(entry.date, style: .date)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Text("\(Int(entry.weight)) kg × \(entry.reps) 回")
+                                    .font(.body)
+                                if let side = entry.side, !side.isEmpty {
+                                    Text(side == "R" ? "右側" : "左側")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            Divider()
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+
+                // ✅ 新しいセット追加フォーム
+                Divider().padding(.vertical, 8)
+                
+                VStack(spacing: 10) {
+                    Text("新しいセットを追加")
+                        .font(.headline)
+                    
+                    // 重量入力
+                    HStack {
+                        Text("重量(kg)")
+                        TextField("60", text: $weightInput)
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    // 回数入力
+                    HStack {
+                        Text("回数")
+                        TextField("10", text: $repsInput)
+                            .keyboardType(.numberPad)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    // ✅ 左右選択 Picker（常時表示・目立つ位置）
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("どちらの手で行いましたか？")
+                            .font(.subheadline)
+                        Picker("Side", selection: $selectedSide) {
+                            Text("右").tag("R")
+                            Text("左").tag("L")
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .padding(.vertical, 6)
+                    
+                    // 追加ボタン
+                    Button("+ 記録を追加") {
+                        addNewSet()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 6)
+                }
+                .padding()
+            }
         }
-        .navigationTitle(exerciseName)
         .onAppear {
             history = DatabaseManager.shared.fetchAll()
                 .filter { $0.exercise == exerciseName }
         }
+        .navigationTitle(exerciseName)
     }
-
-    // ✅ 統計計算関数
+    
     private func calculateStats(for entries: [SetEntry]) -> (avg: Double, max: Double, totalReps: Int) {
         guard !entries.isEmpty else { return (0, 0, 0) }
-
         let weights = entries.map { $0.weight }
         let reps = entries.map { $0.reps }
-
         let avg = weights.reduce(0, +) / Double(weights.count)
         let max = weights.max() ?? 0
         let totalReps = reps.reduce(0, +)
-
         return (avg, max, totalReps)
     }
-}
 
+    private func addNewSet() {
+        guard let weight = Double(weightInput),
+              let reps = Int(repsInput),
+              !exerciseName.isEmpty else { return }
+        
+        DatabaseManager.shared.insert(
+            date: Date(),
+            bodyPart: "",
+            exercise: exerciseName,
+            weight: weight,
+            reps: reps,
+            note: nil,
+            side: selectedSide
+        )
+
+        weightInput = ""
+        repsInput = ""
+        selectedSide = "R"
+
+        history = DatabaseManager.shared.fetchAll()
+            .filter { $0.exercise == exerciseName }
+    }
+}

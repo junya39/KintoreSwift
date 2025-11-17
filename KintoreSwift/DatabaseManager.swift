@@ -1,3 +1,4 @@
+//
 //  DatabaseManager.swift
 
 import Foundation
@@ -11,6 +12,7 @@ struct SetEntry: Identifiable {
     let weight: Double
     let reps: Int
     let note: String?
+    let side: String? // "R" or "L"
 }
 
 class DatabaseManager {
@@ -22,6 +24,7 @@ class DatabaseManager {
         createTables()
     }
 
+    // MARK: - DBを開く
     private func openDatabase() {
         let fileURL = try! FileManager.default
             .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -34,7 +37,9 @@ class DatabaseManager {
         }
     }
 
+    // MARK: - テーブル作成 & マイグレーション
     private func createTables() {
+        // 基本のsetsテーブル（新規インストール時用）
         let createTableQuery = """
         CREATE TABLE IF NOT EXISTS sets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,18 +48,53 @@ class DatabaseManager {
             exercise TEXT,
             weight REAL,
             reps INTEGER,
-            note TEXT
+            note TEXT,
+            side TEXT
         );
         """
         if sqlite3_exec(db, createTableQuery, nil, nil, nil) != SQLITE_OK {
             print("❌ sets テーブル作成失敗")
+        } else {
+            print("✅ sets テーブル確認完了")
         }
 
-        // ✅ 新しく「exercises」テーブルも作成
+        // 既存DBに side カラムがなければ追加
+        migrateSideColumnIfNeeded()
+
         createExerciseTableIfNeeded()
     }
 
-    // MARK: - 新機能: 種目テーブルを作成
+    /// 既存の sets テーブルに side カラムが無い場合は追加する
+    private func migrateSideColumnIfNeeded() {
+        let pragmaQuery = "PRAGMA table_info(sets);"
+        var stmt: OpaquePointer?
+
+        var hasSideColumn = false
+
+        if sqlite3_prepare_v2(db, pragmaQuery, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let namePtr = sqlite3_column_text(stmt, 1) {
+                    let name = String(cString: namePtr)
+                    if name == "side" {
+                        hasSideColumn = true
+                        break
+                    }
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        if !hasSideColumn {
+            let alterQuery = "ALTER TABLE sets ADD COLUMN side TEXT;"
+            if sqlite3_exec(db, alterQuery, nil, nil, nil) == SQLITE_OK {
+                print("✅ sets テーブルに side カラムを追加しました")
+            } else {
+                print("❌ side カラム追加に失敗しました")
+            }
+        }
+    }
+
+    // MARK: - 種目テーブル
     func createExerciseTableIfNeeded() {
         let query = """
         CREATE TABLE IF NOT EXISTS exercises (
@@ -70,7 +110,7 @@ class DatabaseManager {
         }
     }
 
-    // MARK: - 新機能: 種目を追加
+    // MARK: - 種目追加
     func insertExercise(name: String, bodyPart: String) {
         let query = "INSERT INTO exercises (name, bodyPart) VALUES (?, ?);"
         var stmt: OpaquePointer?
@@ -88,7 +128,7 @@ class DatabaseManager {
         sqlite3_finalize(stmt)
     }
 
-    // MARK: - 新機能: 部位ごとの種目リストを取得
+    // MARK: - 部位ごとの種目リスト取得
     func fetchExercisesByBodyPart() -> [String: [String]] {
         var result: [String: [String]] = [:]
         let query = "SELECT name, bodyPart FROM exercises ORDER BY id ASC;"
@@ -106,7 +146,7 @@ class DatabaseManager {
         }
         sqlite3_finalize(stmt)
 
-        // ✅ 初期値がまだない部位にはデフォルト種目をセット
+        // 初期値（デフォルト種目）
         let defaults: [String: [String]] = [
             "胸": ["ベンチプレス", "インクラインベンチプレス", "ケーブルだっちゅーの"],
             "背中": ["チンニング", "ワンハンドロー", "Tバーロウ", "ラットプルダウン（ナロー）"],
@@ -125,9 +165,17 @@ class DatabaseManager {
         return result
     }
 
-    // MARK: - セットを追加
-    func insert(date: Date, bodyPart: String, exercise: String, weight: Double, reps: Int, note: String?) {
-        let query = "INSERT INTO sets (date, bodyPart, exercise, weight, reps, note) VALUES (?, ?, ?, ?, ?, ?);"
+    // MARK: - セットを追加（side対応版）
+    func insert(
+        date: Date,
+        bodyPart: String,
+        exercise: String,
+        weight: Double,
+        reps: Int,
+        note: String?,
+        side: String? = nil
+    ) {
+        let query = "INSERT INTO sets (date, bodyPart, exercise, weight, reps, note, side) VALUES (?, ?, ?, ?, ?, ?, ?);"
         var stmt: OpaquePointer?
 
         if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
@@ -137,14 +185,21 @@ class DatabaseManager {
             sqlite3_bind_text(stmt, 3, (exercise as NSString).utf8String, -1, nil)
             sqlite3_bind_double(stmt, 4, weight)
             sqlite3_bind_int(stmt, 5, Int32(reps))
+
             if let note = note {
                 sqlite3_bind_text(stmt, 6, (note as NSString).utf8String, -1, nil)
             } else {
                 sqlite3_bind_null(stmt, 6)
             }
 
+            if let side = side {
+                sqlite3_bind_text(stmt, 7, (side as NSString).utf8String, -1, nil)
+            } else {
+                sqlite3_bind_null(stmt, 7)
+            }
+
             if sqlite3_step(stmt) == SQLITE_DONE {
-                print("✅ セット追加完了")
+                print("✅ セット追加完了 (\(exercise), side: \(side ?? "nil"))")
             } else {
                 print("❌ セット追加失敗")
             }
@@ -169,19 +224,31 @@ class DatabaseManager {
                 let reps = Int(sqlite3_column_int(stmt, 5))
                 let note = sqlite3_column_text(stmt, 6).flatMap { String(cString: $0) }
 
-                result.append(SetEntry(id: id, date: date, bodyPart: bodyPart, exercise: exercise, weight: weight, reps: reps, note: note))
+                var side: String? = nil
+                if sqlite3_column_count(stmt) > 7 && sqlite3_column_type(stmt, 7) != SQLITE_NULL {
+                    side = String(cString: sqlite3_column_text(stmt, 7))
+                }
+
+                result.append(SetEntry(
+                    id: id,
+                    date: date,
+                    bodyPart: bodyPart,
+                    exercise: exercise,
+                    weight: weight,
+                    reps: reps,
+                    note: note,
+                    side: side
+                ))
             }
         }
         sqlite3_finalize(stmt)
         return result
     }
 
-    // MARK: - 直近2件
+    // MARK: - 直近2件取得
     func fetchLastTwoRecords(for exercise: String) -> [SetEntry] {
         var result: [SetEntry] = []
-        let query = """
-        SELECT * FROM sets WHERE exercise = ? ORDER BY id DESC LIMIT 2;
-        """
+        let query = "SELECT * FROM sets WHERE exercise = ? ORDER BY id DESC LIMIT 2;"
         var stmt: OpaquePointer?
 
         if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
@@ -196,7 +263,21 @@ class DatabaseManager {
                 let reps = Int(sqlite3_column_int(stmt, 5))
                 let note = sqlite3_column_text(stmt, 6).flatMap { String(cString: $0) }
 
-                result.append(SetEntry(id: id, date: date, bodyPart: bodyPart, exercise: exercise, weight: weight, reps: reps, note: note))
+                var side: String? = nil
+                if sqlite3_column_count(stmt) > 7 && sqlite3_column_type(stmt, 7) != SQLITE_NULL {
+                    side = String(cString: sqlite3_column_text(stmt, 7))
+                }
+
+                result.append(SetEntry(
+                    id: id,
+                    date: date,
+                    bodyPart: bodyPart,
+                    exercise: exercise,
+                    weight: weight,
+                    reps: reps,
+                    note: note,
+                    side: side
+                ))
             }
         }
         sqlite3_finalize(stmt)

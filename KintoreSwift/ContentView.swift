@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var exercises: [String: [String]] = [:] // ← SQLiteから読み込む
     @State private var chartGrouping: GroupingType = .day
     @State private var showingHistory = false
+    
+    @State private var selectedSide = "none"
 
     // 新種目追加
     @State private var showingAddExercise = false
@@ -114,6 +116,21 @@ struct ContentView: View {
                         Toggle("自重トレーニング", isOn: $isBodyweight)
                             .toggleStyle(SwitchToggleStyle(tint: .blue))
                             .padding(.horizontal)
+                        
+                        // 左右選択（自重トグルの下）
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("左右")
+                                .font(.headline)
+
+                            Picker("Side", selection: $selectedSide) {
+                                Text("左").tag("left")
+                                Text("右").tag("right")
+                                Text("なし").tag("none")
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 4)
 
                         TextField("重量 (kg)", text: $weightText)
                             .keyboardType(.decimalPad)
@@ -196,11 +213,16 @@ struct ContentView: View {
             exercise: selectedExercise,
             weight: weight,
             reps: reps,
-            note: note.isEmpty ? nil : note
+            note: note.isEmpty ? nil : note,
+            side: selectedSide   // ← 追加！
         )
 
         entries = DatabaseManager.shared.fetchAll()
-        weightText = ""; repsText = ""; note = ""; isBodyweight = false
+        weightText = ""
+        repsText = ""
+        note = ""
+        isBodyweight = false
+        selectedSide = "none"   // ← リセットすると使いやすい
         updateLastDiff()
     }
 
