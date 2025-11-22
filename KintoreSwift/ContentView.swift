@@ -255,3 +255,8 @@ enum GroupingType: String, CaseIterable, Identifiable {
     case day, week, month
     var id: String { rawValue }
 }
+
+
+//PR練習中です。　sideブランチ
+
+
