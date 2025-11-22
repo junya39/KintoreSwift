@@ -66,31 +66,63 @@ struct ExerciseDetailView: View {
                     .padding(.horizontal)
                 }
 
-                // 履歴リスト
+                // 履歴リスト（日時ごとにまとめる）
                 if history.isEmpty {
                     Text("この種目の記録はまだありません。")
                         .foregroundColor(.secondary)
                         .padding(.horizontal)
                 } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(history.sorted(by: { $0.date > $1.date }), id: \.id) { entry in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.date, style: .date)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Text("\(Int(entry.weight)) kg × \(entry.reps) 回")
-                                    .font(.body)
-                                if let side = entry.side, !side.isEmpty {
-                                    Text(side == "R" ? "右側" : "左側")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
+
+                    // 日付ごとにグループ化
+                    let grouped = Dictionary(grouping: history) { entry in
+                        Calendar.current.startOfDay(for: entry.date)
+                    }
+
+                    // 新しい日付が上にくるようにソート
+                    let sortedDays = grouped.keys.sorted(by: >)
+
+                    VStack(alignment: .leading, spacing: 10) {
+
+                        ForEach(sortedDays, id: \.self) { day in
+
+                            VStack(alignment: .leading, spacing: 6) {
+
+                                // 日付ヘッダー
+                                Text(day, style: .date)
+                                    .font(.headline)
+
+                                // その日のセット一覧
+                                ForEach(grouped[day]!.sorted(by: { $0.id < $1.id }), id: \.id) { entry in
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Text("\(Int(entry.weight)) kg × \(entry.reps) 回")
+                                                .font(.body)
+
+                                            if let side = entry.side, !side.isEmpty {
+                                                Text(side == "R" ? "(右)" : "(左)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.gray)
+                                            }
+                                        }
+
+                                        if let note = entry.note, !note.isEmpty {
+                                            Text("💬 \(note)")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .padding(8)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(6)
                                 }
                             }
-                            Divider()
+
+                            Divider().padding(.vertical, 4)
                         }
                     }
                     .padding(.horizontal)
                 }
+
 
                 // ✅ 新しいセット追加フォーム
                 Divider().padding(.vertical, 8)
@@ -122,6 +154,7 @@ struct ExerciseDetailView: View {
                         Picker("Side", selection: $selectedSide) {
                             Text("右").tag("R")
                             Text("左").tag("L")
+                            Text("なし").tag("")
                         }
                         .pickerStyle(.segmented)
                     }

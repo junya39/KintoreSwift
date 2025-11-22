@@ -163,10 +163,26 @@ struct HistoryView: View {
 
                         ForEach(dayBlock.sets, id: \.id) { entry in
                             VStack(alignment: .leading, spacing: 4) {
-                                // "20kg × 10 回" / "自重 × 8 回"
-                                Text("\(weightText(entry.weight)) × \(entry.reps) 回")
-                                    .font(.subheadline)
 
+                                // 🔥 ここだけ HStack に変更
+                                HStack {
+                                    Text("\(weightText(entry.weight)) × \(entry.reps) 回")
+                                        .font(.subheadline)
+
+                                    if let side = entry.side, !side.isEmpty {
+                                        if side == "R" {
+                                            Text("(右)")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        } else if side == "L" {
+                                            Text("(左)")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+
+                                // 📝 メモは今のままでOK
                                 if let note = entry.note,
                                    !note.isEmpty {
                                     Text("💬 \(note)")

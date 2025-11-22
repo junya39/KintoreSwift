@@ -123,9 +123,9 @@ struct ContentView: View {
                                 .font(.headline)
 
                             Picker("Side", selection: $selectedSide) {
-                                Text("左").tag("left")
-                                Text("右").tag("right")
-                                Text("なし").tag("none")
+                                Text("左").tag("L")
+                                Text("右").tag("R")
+                                Text("なし").tag("")
                             }
                             .pickerStyle(.segmented)
                         }
