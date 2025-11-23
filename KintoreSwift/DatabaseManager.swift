@@ -283,4 +283,78 @@ class DatabaseManager {
         sqlite3_finalize(stmt)
         return result
     }
+    // MARK: - 記録を削除
+    func delete(id: Int) {
+        let query = "DELETE FROM sets WHERE id = ?;"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(id))
+
+            if sqlite3_step(stmt) == SQLITE_DONE {
+                print("🗑️ 削除完了 id=\(id)")
+            } else {
+                print("❌ 削除失敗")
+            }
+        }
+
+        sqlite3_finalize(stmt)
+    }
+
+    // MARK: - 記録を更新
+    func updateSet(_ entry: SetEntry) {
+        let query = """
+        UPDATE sets
+        SET date = ?, bodyPart = ?, exercise = ?, weight = ?, reps = ?, note = ?, side = ?
+        WHERE id = ?;
+        """
+
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+
+            // 1. date
+            let dateString = ISO8601DateFormatter().string(from: entry.date)
+            sqlite3_bind_text(stmt, 1, (dateString as NSString).utf8String, -1, nil)
+
+            // 2. bodyPart
+            sqlite3_bind_text(stmt, 2, (entry.bodyPart as NSString).utf8String, -1, nil)
+
+            // 3. exercise
+            sqlite3_bind_text(stmt, 3, (entry.exercise as NSString).utf8String, -1, nil)
+
+            // 4. weight
+            sqlite3_bind_double(stmt, 4, entry.weight)
+
+            // 5. reps
+            sqlite3_bind_int(stmt, 5, Int32(entry.reps))
+
+            // 6. note
+            if let note = entry.note {
+                sqlite3_bind_text(stmt, 6, (note as NSString).utf8String, -1, nil)
+            } else {
+                sqlite3_bind_null(stmt, 6)
+            }
+
+            // 7. side
+            if let side = entry.side {
+                sqlite3_bind_text(stmt, 7, (side as NSString).utf8String, -1, nil)
+            } else {
+                sqlite3_bind_null(stmt, 7)
+            }
+
+            // 8. WHERE id = ?
+            sqlite3_bind_int(stmt, 8, Int32(entry.id))
+
+            // 実行
+            if sqlite3_step(stmt) == SQLITE_DONE {
+                print("✏️ 更新完了 id=\(entry.id)")
+            } else {
+                print("❌ 更新失敗")
+            }
+        }
+
+        sqlite3_finalize(stmt)
+    }
+
 }
