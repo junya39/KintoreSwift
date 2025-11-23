@@ -44,6 +44,7 @@ struct ContentView: View {
                         .padding(.top, 8)
                         .onChange(of: selectedDate) { _, _ in
                             updateDailyEntries()
+                            diffText = ""
                         }
 
                     // MARK: - 部位選択
@@ -94,7 +95,7 @@ struct ContentView: View {
                     }
 
                     // MARK: - 前回比
-                    if !diffText.isEmpty {
+                    if !diffText.isEmpty && diffText != "前回記録なし" {
                         Text(diffText)
                             .font(.subheadline)
                             .bold()
