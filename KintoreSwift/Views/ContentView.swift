@@ -256,7 +256,8 @@ private struct DailyListSection: View {
                     .font(.headline)
                     .padding(.horizontal, 16)
 
-                VStack(spacing: 12) {
+                // --- Listでスワイプ削除を復活 ---
+                List {
                     ForEach(dailyEntries, id: \.id) { entry in
                         VStack(alignment: .leading, spacing: 6) {
 
@@ -278,25 +279,22 @@ private struct DailyListSection: View {
                                     .foregroundColor(.secondary)
                             }
                         }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
-                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                         .onTapGesture { onTap(entry) }
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                onDelete(entry)
-                            } label: {
-                                Label("削除", systemImage: "trash")
-                            }
+                    }
+                    .onDelete { indexSet in
+                        indexSet.forEach { idx in
+                            onDelete(dailyEntries[idx])
                         }
                     }
                 }
+                .frame(height: CGFloat(dailyEntries.count) * 90)
+                .listStyle(.plain)
             }
         }
     }
 }
+
 
 
 
