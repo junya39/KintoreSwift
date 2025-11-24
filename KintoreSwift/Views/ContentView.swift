@@ -303,52 +303,73 @@ private struct DailyListSection: View {
     let onTap: (SetEntry) -> Void
     let onDelete: (SetEntry) -> Void
 
+    // 種目毎にグループ化
+    private var groupedEntries: [String: [SetEntry]] {
+        Dictionary(grouping: dailyEntries, by: { $0.exercise })
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
 
             if !dailyEntries.isEmpty {
                 Text("本日の記録")
                     .font(.headline)
                     .padding(.horizontal, 16)
 
-                // --- Listでスワイプ削除を復活 ---
-                List {
-                    ForEach(dailyEntries, id: \.id) { entry in
-                        VStack(alignment: .leading, spacing: 6) {
+                VStack(spacing: 24) {
+                    ForEach(groupedEntries.keys.sorted(), id: \.self) { exerciseName in
+                        let items = groupedEntries[exerciseName] ?? []
 
-                            Text(entry.exercise)
-                                .font(.subheadline.bold())
+                        VStack(alignment: .leading, spacing: 8) {
 
-                            HStack {
-                                Text("\(Int(entry.weight))kg × \(entry.reps)回")
+                            // 種目名（1回だけ）
+                            Text(exerciseName)
+                                .font(.headline)
+                                .padding(.horizontal, 16)
 
-                                if let side = entry.side, !side.isEmpty {
-                                    Text(side == "R" ? "(右)" : "(左)")
-                                        .foregroundColor(.secondary)
+                            VStack(spacing: 8) {
+                                ForEach(items, id: \.id) { entry in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("\(Int(entry.weight))kg × \(entry.reps)回")
+                                                .font(.subheadline)
+
+                                            if let side = entry.side, !side.isEmpty {
+                                                Text(side == "R" ? "(右)" : "(左)")
+                                                    .foregroundColor(.secondary)
+                                            }
+
+                                            if let note = entry.note, !note.isEmpty {
+                                                Text("💬 \(note)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+
+                                        Spacer()
+                                    }
+                                    .padding(12)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(10)
+                                    .padding(.horizontal, 16)
+                                    .onTapGesture { onTap(entry) }
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            onDelete(entry)
+                                        } label: {
+                                            Label("削除", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
-
-                            if let note = entry.note, !note.isEmpty {
-                                Text("💬 \(note)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 8)
-                        .onTapGesture { onTap(entry) }
-                    }
-                    .onDelete { indexSet in
-                        indexSet.forEach { idx in
-                            onDelete(dailyEntries[idx])
                         }
                     }
                 }
-                .frame(height: CGFloat(dailyEntries.count) * 90)
-                .listStyle(.plain)
             }
         }
     }
 }
+
 
 
 
