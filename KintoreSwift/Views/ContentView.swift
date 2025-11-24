@@ -22,6 +22,11 @@ struct ContentView: View {
     @State private var editingEntry: SetEntry? = nil
     @State private var diffText: String = ""
     @State private var diffColor: Color = .secondary
+    @State private var showingEditExercise = false
+    @State private var editExerciseName = ""
+    @State private var editExerciseBodyPart = "胸"
+
+    
 
     let bodyParts = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
 
@@ -50,13 +55,43 @@ struct ContentView: View {
                     ExercisePickerSection(
                         selectedExercise: $selectedExercise,
                         exercises: exercises[selectedBodyPart] ?? [],
-                        onAdd: { showingAddExercise = true }
+                        onAdd: { showingAddExercise = true },
+                        onEdit: {
+                            editExerciseName = selectedExercise
+                            editExerciseBodyPart = selectedBodyPart
+                            showingEditExercise = true
+                        }
                     )
+
                         .alert("新しい種目を追加", isPresented: $showingAddExercise) {
                             TextField("種目名を入力", text: $newExerciseName)
                             Button("追加") { addNewExercise() }
                             Button("キャンセル", role: .cancel) {}
                         }
+                    
+                        .sheet(isPresented: $showingEditExercise) {
+                            VStack(spacing: 20) {
+                                Text("種目を編集")
+                                    .font(.headline)
+
+                                TextField("名前", text: $editExerciseName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .padding()
+
+                                Picker("部位", selection: $editExerciseBodyPart) {
+                                    ForEach(bodyParts, id: \.self) { Text($0) }
+                                }
+                                .pickerStyle(.wheel)
+
+                                Button("保存") {
+                                    updateExercise()
+                                    showingEditExercise = false
+                                }
+                                .padding()
+                            }
+                            .presentationDetents([.medium])
+                        }
+
 
                     DiffSection(diffText: diffText, diffColor: diffColor)
 
@@ -155,6 +190,18 @@ struct ContentView: View {
         diffText = "前回比: \(wDiff >= 0 ? "+" : "")\(wDiff)kg / \(rDiff >= 0 ? "+" : "")\(rDiff)回"
         diffColor = (wDiff > 0 || rDiff > 0) ? .green : (wDiff < 0 || rDiff < 0 ? .red : .gray)
     }
+    
+    private func updateExercise() {
+        DatabaseManager.shared.updateExercise(
+            name: selectedExercise,
+            newName: editExerciseName,
+            newBodyPart: editExerciseBodyPart
+        )
+
+        exercises = DatabaseManager.shared.fetchExercisesByBodyPart()
+        selectedExercise = editExerciseName
+    }
+
 }
 
 
@@ -208,6 +255,7 @@ private struct ExercisePickerSection: View {
     @Binding var selectedExercise: String
     let exercises: [String]
     let onAdd: () -> Void
+    let onEdit: () -> Void   // ←追加
 
     var body: some View {
         HStack {
@@ -218,6 +266,12 @@ private struct ExercisePickerSection: View {
 
             Spacer()
 
+            Button(action: onEdit) {
+                Image(systemName: "pencil")
+                    .foregroundColor(.blue)
+                    .font(.title3)
+            }
+
             Button(action: onAdd) {
                 Image(systemName: "plus.circle")
                     .foregroundColor(.blue)
@@ -227,6 +281,7 @@ private struct ExercisePickerSection: View {
         .padding(.horizontal, 16)
     }
 }
+
 
 private struct DiffSection: View {
     let diffText: String

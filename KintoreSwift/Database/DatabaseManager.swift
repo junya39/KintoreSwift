@@ -346,5 +346,25 @@ class DatabaseManager {
 
         sqlite3_finalize(stmt)
     }
+    
+    func updateExercise(name: String, newName: String, newBodyPart: String) {
+        let query = "UPDATE exercises SET name = ?, bodyPart = ? WHERE name = ?;"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (newName as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 2, (newBodyPart as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 3, (name as NSString).utf8String, -1, nil)
+
+            if sqlite3_step(stmt) == SQLITE_DONE {
+                print("✏️ 種目更新: \(name) → \(newName) (\(newBodyPart))")
+            } else {
+                print("❌ 種目更新失敗")
+            }
+        }
+
+        sqlite3_finalize(stmt)
+    }
+
 
 }
