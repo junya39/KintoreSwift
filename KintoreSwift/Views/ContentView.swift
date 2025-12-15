@@ -25,13 +25,17 @@ struct ContentView: View {
     @State private var showingEditExercise = false
     @State private var editExerciseName = ""
     @State private var editExerciseBodyPart = "胸"
+    
+    @State private var showExerciseDetail = false
+    @State private var detailExerciseName = ""
+
 
     
 
     let bodyParts = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
 
@@ -62,6 +66,22 @@ struct ContentView: View {
                             showingEditExercise = true
                         }
                     )
+                    
+                    DailyListSection(
+                        dailyEntries: dailyEntries,
+                        onTap: { entry in
+                            editingEntry = entry
+                            showingEditSheet = true
+                        },
+                        onDelete: { entry in
+                            deleteSet(entry)
+                        },
+                        onTapExercise: { name in
+                            detailExerciseName = name
+                            showExerciseDetail = true
+                        }
+                    )
+
 
                         .alert("新しい種目を追加", isPresented: $showingAddExercise) {
                             TextField("種目名を入力", text: $newExerciseName)
@@ -95,16 +115,6 @@ struct ContentView: View {
 
                     DiffSection(diffText: diffText, diffColor: diffColor)
 
-                    DailyListSection(
-                        dailyEntries: dailyEntries,
-                        onTap: { entry in
-                            editingEntry = entry
-                            showingEditSheet = true
-                        },
-                        onDelete: { entry in
-                            deleteSet(entry)
-                        }
-                    )
 
 
                     InputFormSection(
@@ -120,6 +130,11 @@ struct ContentView: View {
                 }
                 .padding(.bottom, 32)
             }
+            
+            .navigationDestination(isPresented: $showExerciseDetail) {
+                ExerciseDetailView(exerciseName: detailExerciseName)
+            }
+
             .navigationTitle("Workout")
             .onAppear {
                 DatabaseManager.shared.createExerciseTableIfNeeded()
@@ -302,6 +317,7 @@ private struct DailyListSection: View {
     let dailyEntries: [SetEntry]
     let onTap: (SetEntry) -> Void
     let onDelete: (SetEntry) -> Void
+    let onTapExercise: (String) -> Void
 
     // 種目毎にグループ化
     private var groupedEntries: [String: [SetEntry]] {
@@ -323,9 +339,15 @@ private struct DailyListSection: View {
                         VStack(alignment: .leading, spacing: 8) {
 
                             // 種目名（1回だけ）
-                            Text(exerciseName)
-                                .font(.headline)
-                                .padding(.horizontal, 16)
+                            Button {
+                                onTapExercise(exerciseName)
+                            } label: {
+                                Text(exerciseName)
+                                    .font(.headline)
+                                    .padding(.horizontal, 16)
+                                    .foregroundColor(.blue)
+                            }
+
 
                             VStack(spacing: 8) {
                                 ForEach(items, id: \.id) { entry in
