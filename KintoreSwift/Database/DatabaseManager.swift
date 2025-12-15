@@ -365,6 +365,56 @@ class DatabaseManager {
 
         sqlite3_finalize(stmt)
     }
+    
+    // MARK: - 種目別 全履歴取得
+    func fetchSetsByExercise(_ exercise: String) -> [SetEntry] {
+        var result: [SetEntry] = []
+
+        let query = """
+            SELECT * FROM sets
+            WHERE exercise = ?
+            ORDER BY date DESC;
+        """
+
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (exercise as NSString).utf8String, -1, nil)
+
+            while sqlite3_step(stmt) == SQLITE_ROW {
+
+                let id = Int(sqlite3_column_int(stmt, 0))
+                let dateString = String(cString: sqlite3_column_text(stmt, 1))
+                let date = ISO8601DateFormatter().date(from: dateString) ?? Date()
+                let bodyPart = String(cString: sqlite3_column_text(stmt, 2))
+                let exercise = String(cString: sqlite3_column_text(stmt, 3))
+                let weight = sqlite3_column_double(stmt, 4)
+                let reps = Int(sqlite3_column_int(stmt, 5))
+                let note = sqlite3_column_text(stmt, 6).flatMap { String(cString: $0) }
+
+                var side: String? = nil
+                if sqlite3_column_count(stmt) > 7 &&
+                    sqlite3_column_type(stmt, 7) != SQLITE_NULL {
+                    side = String(cString: sqlite3_column_text(stmt, 7))
+                }
+
+                result.append(SetEntry(
+                    id: id,
+                    date: date,
+                    bodyPart: bodyPart,
+                    exercise: exercise,
+                    weight: weight,
+                    reps: reps,
+                    note: note,
+                    side: side
+                ))
+            }
+        }
+
+        sqlite3_finalize(stmt)
+        return result
+    }
+
 
 
 }
