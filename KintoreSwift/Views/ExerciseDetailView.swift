@@ -1,3 +1,8 @@
+//ExerciseDetailView.swift
+
+// TODO: history を viewModel.history に統一する（Viewの@State削除）
+
+
 import SwiftUI
 import Charts
 
@@ -5,6 +10,7 @@ struct ExerciseDetailView: View {
 
     let exerciseName: String
     @State private var history: [SetEntry] = []
+    @StateObject private var viewModel = ExerciseDetailViewModel()
 
     @State private var weightInput = ""
     @State private var repsInput = ""
@@ -226,8 +232,9 @@ struct ExerciseDetailView: View {
             }
         }
         .onAppear {
-            history = DatabaseManager.shared.fetchSetsByExercise(exerciseName)
+            viewModel.load(exercise: exerciseName)
         }
+
         .navigationTitle(exerciseName)
     }
 
@@ -291,7 +298,5 @@ struct ExerciseDetailView: View {
         weightInput = ""
         repsInput = ""
         selectedSide = "R"
-
-        history = DatabaseManager.shared.fetchSetsByExercise(exerciseName)
     }
 }
