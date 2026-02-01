@@ -1,4 +1,4 @@
-//WorkoutView.swift
+// WorkoutView.swift
 
 import SwiftUI
 import Charts
@@ -20,6 +20,9 @@ struct WorkoutView: View {
     @State private var newExerciseName = ""
 
     @StateObject private var viewModel = ContentViewModel()
+
+    // ✅ 日付タップで履歴へ遷移するためのフラグ
+    @State private var showHistory = false
 
     private let bodyParts = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
 
@@ -51,10 +54,7 @@ struct WorkoutView: View {
 
                         CalendarSection(
                             selectedDate: $selectedDate,
-                            entries: viewModel.entries,
-                            onDateChange: {
-                                viewModel.updateDailyEntries(for: selectedDate)
-                            }
+                            entries: viewModel.entries
                         )
 
                         BodyPartSection(
@@ -99,12 +99,42 @@ struct WorkoutView: View {
                 viewModel.loadInitialData()
                 viewModel.updateDailyEntries(for: selectedDate)
             }
-            .alert("新しい種目を追加", isPresented: $showingAddExercise) {
-                TextField("種目名", text: $newExerciseName)
-                Button("追加") {
-                    addNewExercise()
+
+            // ✅ カレンダーで日付が変わった瞬間に「その日」の一覧へ
+            .onChange(of: selectedDate) { _, newValue in
+                viewModel.updateDailyEntries(for: newValue)
+                showHistory = true
+            }
+
+            // ✅ iOS 16+ 推奨の遷移（deprecated回避）
+            .navigationDestination(isPresented: $showHistory) {
+                // HistoryView が「selectedDate だけ」を受け取る前提
+                HistoryView(selectedDate: selectedDate)
+            }
+
+            .sheet(isPresented: $showingAddExercise) {
+                VStack(spacing: 16) {
+                    Text("新しい種目を追加")
+                        .font(.headline)
+
+                    TextField("種目名", text: $newExerciseName)
+                        .keyboardType(.default)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                        .textFieldStyle(.roundedBorder)
+
+                    HStack {
+                        Button("キャンセル") {
+                            showingAddExercise = false
+                        }
+
+                        Button("追加") {
+                            addNewExercise()
+                            showingAddExercise = false
+                        }
+                    }
                 }
-                Button("キャンセル", role: .cancel) {}
+                .padding()
             }
         }
     }
@@ -173,7 +203,6 @@ private struct HeaderSection: View {
     }
 }
 
-
 private struct TodaySummarySection: View {
     let totalVolume: Int
 
@@ -198,7 +227,6 @@ private struct TodaySummarySection: View {
 private struct CalendarSection: View {
     @Binding var selectedDate: Date
     let entries: [SetEntry]
-    let onDateChange: () -> Void
 
     var body: some View {
         CalendarView(
@@ -208,8 +236,9 @@ private struct CalendarSection: View {
         .frame(height: 220)
         .background(Color.card)
         .cornerRadius(16)
-        }
+        .padding(.horizontal, 16)
     }
+}
 
 private struct BodyPartSection: View {
     @Binding var selectedBodyPart: String
@@ -265,12 +294,16 @@ private struct ExercisePickerSection: View {
         .padding()
         .background(Color.card)
         .cornerRadius(16)
-        .font(.title2.bold())
+        .padding(.horizontal, 16)
     }
 }
 
 private struct DailyListSection: View {
     let dailyEntries: [SetEntry]
+
+    private func weightText(_ w: Double) -> String {
+        w == 0 ? "自重" : "\(Int(w))kg"
+    }
 
     var body: some View {
         if !dailyEntries.isEmpty {
@@ -282,15 +315,14 @@ private struct DailyListSection: View {
 
                 ForEach(dailyEntries, id: \.id) { entry in
                     HStack {
-                        Text("\(Int(entry.weight))kg × \(entry.reps)回")
+                        Text("\(weightText(entry.weight)) × \(entry.reps)回")
                             .foregroundColor(.white)
-
                         Spacer()
                     }
                     .padding()
                     .background(Color.card)
-                    .foregroundColor(.white)
-
+                    .cornerRadius(12)
+                    .padding(.horizontal, 16)
                 }
             }
         }
@@ -339,7 +371,7 @@ private struct InputFormSection: View {
         }
         .padding()
         .background(Color.card)
+        .cornerRadius(16)
+        .padding(.horizontal, 16)
     }
 }
-
-

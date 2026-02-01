@@ -1,17 +1,38 @@
-//
+
 //  DatabaseManager.swift
 
 import Foundation
 import SQLite3
 
-
-class DatabaseManager {
+final class DatabaseManager {
     static let shared = DatabaseManager()
     private var db: OpaquePointer?
 
     private init() {
         openDatabase()
         createTables()
+    }
+
+    // MARK: - Formatters
+    /// DBに保存している日付フォーマット（insert / select で必ず統一）
+    private lazy var isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        // insert() でこれを使って保存している前提（あなたの現状に合わせる）
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    /// 旧データ（小数秒なし）も混在している可能性があるためのフォールバック
+    private lazy var isoFormatterNoFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private func parseISODate(_ text: String) -> Date {
+        if let d = isoFormatter.date(from: text) { return d }
+        if let d = isoFormatterNoFraction.date(from: text) { return d }
+        return Date()
     }
 
     // MARK: - DBを開く
@@ -29,6 +50,11 @@ class DatabaseManager {
 
     // MARK: - テーブル作成 & マイグレーション
     private func createTables() {
+        guard db != nil else {
+            print("❌ DBがnilのためテーブル作成できません")
+            return
+        }
+
         // 基本のsetsテーブル（新規インストール時用）
         let createTableQuery = """
         CREATE TABLE IF NOT EXISTS sets (
@@ -56,9 +82,10 @@ class DatabaseManager {
 
     /// 既存の sets テーブルに side カラムが無い場合は追加する
     private func migrateSideColumnIfNeeded() {
+        guard db != nil else { return }
+
         let pragmaQuery = "PRAGMA table_info(sets);"
         var stmt: OpaquePointer?
-
         var hasSideColumn = false
 
         if sqlite3_prepare_v2(db, pragmaQuery, -1, &stmt, nil) == SQLITE_OK {
@@ -86,6 +113,8 @@ class DatabaseManager {
 
     // MARK: - 種目テーブル
     func createExerciseTableIfNeeded() {
+        guard db != nil else { return }
+
         let query = """
         CREATE TABLE IF NOT EXISTS exercises (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,6 +131,8 @@ class DatabaseManager {
 
     // MARK: - 種目追加
     func insertExercise(name: String, bodyPart: String) {
+        guard db != nil else { return }
+
         let query = "INSERT INTO exercises (name, bodyPart) VALUES (?, ?);"
         var stmt: OpaquePointer?
 
@@ -120,6 +151,8 @@ class DatabaseManager {
 
     // MARK: - 部位ごとの種目リスト取得
     func fetchExercisesByBodyPart() -> [String: [String]] {
+        guard db != nil else { return [:] }
+
         var result: [String: [String]] = [:]
         let query = "SELECT name, bodyPart FROM exercises ORDER BY id ASC;"
         var stmt: OpaquePointer?
@@ -165,11 +198,15 @@ class DatabaseManager {
         note: String?,
         side: String? = nil
     ) {
+        guard db != nil else { return }
+
         let query = "INSERT INTO sets (date, bodyPart, exercise, weight, reps, note, side) VALUES (?, ?, ?, ?, ?, ?, ?);"
         var stmt: OpaquePointer?
 
         if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
-            let dateString = ISO8601DateFormatter().string(from: date)
+            // ✅ 保存は必ず isoFormatter に統一
+            let dateString = isoFormatter.string(from: date)
+
             sqlite3_bind_text(stmt, 1, (dateString as NSString).utf8String, -1, nil)
             sqlite3_bind_text(stmt, 2, (bodyPart as NSString).utf8String, -1, nil)
             sqlite3_bind_text(stmt, 3, (exercise as NSString).utf8String, -1, nil)
@@ -182,7 +219,7 @@ class DatabaseManager {
                 sqlite3_bind_null(stmt, 6)
             }
 
-            if let side = side {
+            if let side = side, !side.isEmpty {
                 sqlite3_bind_text(stmt, 7, (side as NSString).utf8String, -1, nil)
             } else {
                 sqlite3_bind_null(stmt, 7)
@@ -199,6 +236,8 @@ class DatabaseManager {
 
     // MARK: - 全データ取得
     func fetchAll() -> [SetEntry] {
+        guard db != nil else { return [] }
+
         var result: [SetEntry] = []
         let query = "SELECT * FROM sets ORDER BY date DESC;"
         var stmt: OpaquePointer?
@@ -207,7 +246,8 @@ class DatabaseManager {
             while sqlite3_step(stmt) == SQLITE_ROW {
                 let id = Int(sqlite3_column_int(stmt, 0))
                 let dateString = String(cString: sqlite3_column_text(stmt, 1))
-                let date = ISO8601DateFormatter().date(from: dateString) ?? Date()
+                let date = parseISODate(dateString)
+
                 let bodyPart = String(cString: sqlite3_column_text(stmt, 2))
                 let exercise = String(cString: sqlite3_column_text(stmt, 3))
                 let weight = sqlite3_column_double(stmt, 4)
@@ -237,18 +277,22 @@ class DatabaseManager {
 
     // MARK: - 直近2件取得
     func fetchLastTwoRecords(for exercise: String) -> [SetEntry] {
+        guard db != nil else { return [] }
+
         var result: [SetEntry] = []
         let query = "SELECT * FROM sets WHERE exercise = ? ORDER BY id DESC LIMIT 2;"
         var stmt: OpaquePointer?
 
         if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_text(stmt, 1, (exercise as NSString).utf8String, -1, nil)
+
             while sqlite3_step(stmt) == SQLITE_ROW {
                 let id = Int(sqlite3_column_int(stmt, 0))
                 let dateString = String(cString: sqlite3_column_text(stmt, 1))
-                let date = ISO8601DateFormatter().date(from: dateString) ?? Date()
+                let date = parseISODate(dateString)
+
                 let bodyPart = String(cString: sqlite3_column_text(stmt, 2))
-                let exercise = String(cString: sqlite3_column_text(stmt, 3))
+                let ex = String(cString: sqlite3_column_text(stmt, 3))
                 let weight = sqlite3_column_double(stmt, 4)
                 let reps = Int(sqlite3_column_int(stmt, 5))
                 let note = sqlite3_column_text(stmt, 6).flatMap { String(cString: $0) }
@@ -262,7 +306,7 @@ class DatabaseManager {
                     id: id,
                     date: date,
                     bodyPart: bodyPart,
-                    exercise: exercise,
+                    exercise: ex,
                     weight: weight,
                     reps: reps,
                     note: note,
@@ -273,8 +317,11 @@ class DatabaseManager {
         sqlite3_finalize(stmt)
         return result
     }
+
     // MARK: - 記録を削除
     func delete(id: Int) {
+        guard db != nil else { return }
+
         let query = "DELETE FROM sets WHERE id = ?;"
         var stmt: OpaquePointer?
 
@@ -287,67 +334,55 @@ class DatabaseManager {
                 print("❌ 削除失敗")
             }
         }
-
         sqlite3_finalize(stmt)
     }
 
     // MARK: - 記録を更新
     func updateSet(_ entry: SetEntry) {
+        guard db != nil else { return }
+
         let query = """
         UPDATE sets
         SET date = ?, bodyPart = ?, exercise = ?, weight = ?, reps = ?, note = ?, side = ?
         WHERE id = ?;
         """
-
         var stmt: OpaquePointer?
 
         if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
 
-            // 1. date
-            let dateString = ISO8601DateFormatter().string(from: entry.date)
+            let dateString = isoFormatter.string(from: entry.date)
             sqlite3_bind_text(stmt, 1, (dateString as NSString).utf8String, -1, nil)
-
-            // 2. bodyPart
             sqlite3_bind_text(stmt, 2, (entry.bodyPart as NSString).utf8String, -1, nil)
-
-            // 3. exercise
             sqlite3_bind_text(stmt, 3, (entry.exercise as NSString).utf8String, -1, nil)
-
-            // 4. weight
             sqlite3_bind_double(stmt, 4, entry.weight)
-
-            // 5. reps
             sqlite3_bind_int(stmt, 5, Int32(entry.reps))
 
-            // 6. note
             if let note = entry.note {
                 sqlite3_bind_text(stmt, 6, (note as NSString).utf8String, -1, nil)
             } else {
                 sqlite3_bind_null(stmt, 6)
             }
 
-            // 7. side
-            if let side = entry.side {
+            if let side = entry.side, !side.isEmpty {
                 sqlite3_bind_text(stmt, 7, (side as NSString).utf8String, -1, nil)
             } else {
                 sqlite3_bind_null(stmt, 7)
             }
 
-            // 8. WHERE id = ?
             sqlite3_bind_int(stmt, 8, Int32(entry.id))
 
-            // 実行
             if sqlite3_step(stmt) == SQLITE_DONE {
                 print("✏️ 更新完了 id=\(entry.id)")
             } else {
                 print("❌ 更新失敗")
             }
         }
-
         sqlite3_finalize(stmt)
     }
-    
+
     func updateExercise(name: String, newName: String, newBodyPart: String) {
+        guard db != nil else { return }
+
         let query = "UPDATE exercises SET name = ?, bodyPart = ? WHERE name = ?;"
         var stmt: OpaquePointer?
 
@@ -362,32 +397,31 @@ class DatabaseManager {
                 print("❌ 種目更新失敗")
             }
         }
-
         sqlite3_finalize(stmt)
     }
-    
+
     // MARK: - 種目別 全履歴取得
     func fetchSetsByExercise(_ exercise: String) -> [SetEntry] {
-        var result: [SetEntry] = []
+        guard db != nil else { return [] }
 
+        var result: [SetEntry] = []
         let query = """
             SELECT * FROM sets
             WHERE exercise = ?
             ORDER BY date DESC;
         """
-
         var stmt: OpaquePointer?
 
         if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_text(stmt, 1, (exercise as NSString).utf8String, -1, nil)
 
             while sqlite3_step(stmt) == SQLITE_ROW {
-
                 let id = Int(sqlite3_column_int(stmt, 0))
                 let dateString = String(cString: sqlite3_column_text(stmt, 1))
-                let date = ISO8601DateFormatter().date(from: dateString) ?? Date()
+                let date = parseISODate(dateString)
+
                 let bodyPart = String(cString: sqlite3_column_text(stmt, 2))
-                let exercise = String(cString: sqlite3_column_text(stmt, 3))
+                let ex = String(cString: sqlite3_column_text(stmt, 3))
                 let weight = sqlite3_column_double(stmt, 4)
                 let reps = Int(sqlite3_column_int(stmt, 5))
                 let note = sqlite3_column_text(stmt, 6).flatMap { String(cString: $0) }
@@ -402,7 +436,7 @@ class DatabaseManager {
                     id: id,
                     date: date,
                     bodyPart: bodyPart,
-                    exercise: exercise,
+                    exercise: ex,
                     weight: weight,
                     reps: reps,
                     note: note,
@@ -415,6 +449,66 @@ class DatabaseManager {
         return result
     }
 
+    // MARK: - 日付別 取得（HistoryView 用）
+    /// 「指定日の 00:00:00 〜 翌日 00:00:00」を ISO8601文字列で範囲検索
+    func fetchSets(by date: Date) -> [SetEntry] {
+        guard db != nil else { return [] }
 
+        var result: [SetEntry] = []
 
+        let cal = Calendar.current
+        let startOfDay = cal.startOfDay(for: date)
+        let endOfDay = cal.date(byAdding: .day, value: 1, to: startOfDay)!
+
+        let startText = isoFormatter.string(from: startOfDay)
+        let endText = isoFormatter.string(from: endOfDay)
+
+        let query = """
+        SELECT * FROM sets
+        WHERE date >= ? AND date < ?
+        ORDER BY date ASC;
+        """
+
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+
+            sqlite3_bind_text(stmt, 1, (startText as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 2, (endText as NSString).utf8String, -1, nil)
+
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let id = Int(sqlite3_column_int(stmt, 0))
+                let dateString = String(cString: sqlite3_column_text(stmt, 1))
+                let d = parseISODate(dateString)
+
+                let bodyPart = String(cString: sqlite3_column_text(stmt, 2))
+                let exercise = String(cString: sqlite3_column_text(stmt, 3))
+                let weight = sqlite3_column_double(stmt, 4)
+                let reps = Int(sqlite3_column_int(stmt, 5))
+                let note = sqlite3_column_text(stmt, 6).flatMap { String(cString: $0) }
+
+                var side: String? = nil
+                if sqlite3_column_count(stmt) > 7 &&
+                    sqlite3_column_type(stmt, 7) != SQLITE_NULL {
+                    side = String(cString: sqlite3_column_text(stmt, 7))
+                }
+
+                result.append(
+                    SetEntry(
+                        id: id,
+                        date: d,
+                        bodyPart: bodyPart,
+                        exercise: exercise,
+                        weight: weight,
+                        reps: reps,
+                        note: note,
+                        side: side
+                    )
+                )
+            }
+        }
+
+        sqlite3_finalize(stmt)
+        return result
+    }
 }
