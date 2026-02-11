@@ -180,12 +180,34 @@ final class DatabaseManager {
         ]
 
         for (part, items) in defaults {
-            if result[part] == nil || result[part]!.isEmpty {
-                result[part] = items
+            var merged = result[part] ?? []
+            for item in items where !merged.contains(item) {
+                merged.append(item)
             }
+            result[part] = merged
         }
 
         return result
+    }
+
+    // MARK: - 種目名から部位取得
+    func fetchBodyPart(for exerciseName: String) -> String? {
+        guard db != nil else { return nil }
+
+        let query = "SELECT bodyPart FROM exercises WHERE name = ? ORDER BY id DESC LIMIT 1;"
+        var stmt: OpaquePointer?
+        var bodyPart: String?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (exerciseName as NSString).utf8String, -1, nil)
+            if sqlite3_step(stmt) == SQLITE_ROW,
+               let bodyPartPtr = sqlite3_column_text(stmt, 0) {
+                bodyPart = String(cString: bodyPartPtr)
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        return bodyPart
     }
 
     // MARK: - セットを追加（side対応版）

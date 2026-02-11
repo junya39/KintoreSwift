@@ -13,15 +13,24 @@ struct CalendarView: UIViewRepresentable {
         calendar.dataSource = context.coordinator
 
         calendar.appearance.headerDateFormat = "MMMM yyyy"
-        calendar.appearance.todayColor = .systemBlue
-        calendar.appearance.selectionColor = .systemGray
-        calendar.appearance.titleTodayColor = .white
+        calendar.appearance.todayColor = UIColor.systemGreen.withAlphaComponent(0.8)
+        calendar.appearance.selectionColor = .white
+        calendar.appearance.titleSelectionColor = .black
+        calendar.appearance.titleTodayColor = .black
+        calendar.appearance.headerTitleColor = .white
+        calendar.appearance.weekdayTextColor = UIColor.white.withAlphaComponent(0.85)
+        calendar.appearance.titleDefaultColor = UIColor.white.withAlphaComponent(0.88)
+        calendar.appearance.titlePlaceholderColor = UIColor.white.withAlphaComponent(0.35)
+        calendar.appearance.headerTitleFont = .systemFont(ofSize: 17, weight: .bold)
+        calendar.appearance.weekdayFont = .systemFont(ofSize: 16, weight: .semibold)
+        calendar.appearance.titleFont = .systemFont(ofSize: 15, weight: .medium)
         calendar.scrollDirection = .horizontal
         calendar.scope = .month
         calendar.locale = Locale(identifier: "ja_JP")
         calendar.appearance.borderRadius = 0.4
         calendar.appearance.eventDefaultColor = .clear
         calendar.appearance.eventSelectionColor = .clear
+        calendar.backgroundColor = .clear
         return calendar
     }
 
@@ -65,19 +74,19 @@ struct CalendarView: UIViewRepresentable {
 
         func calendar(_ calendar: FSCalendar, numberOfEventsFor date: Date) -> Int { 0 }
 
-        // ✅ 記録がある日は淡い青で塗る
+        // ✅ 記録がある日は見やすい青で塗る
         func calendar(_ calendar: FSCalendar,
                       appearance: FSCalendarAppearance,
                       fillDefaultColorFor date: Date) -> UIColor? {
             let key = keyFormatter.string(from: date)
-            return markedKeys.contains(key) ? UIColor.systemBlue.withAlphaComponent(0.4) : nil
+            return markedKeys.contains(key) ? UIColor.systemBlue.withAlphaComponent(0.75) : nil
         }
 
         func calendar(_ calendar: FSCalendar,
                       appearance: FSCalendarAppearance,
                       titleDefaultColorFor date: Date) -> UIColor? {
             let key = keyFormatter.string(from: date)
-            return markedKeys.contains(key) ? UIColor.systemBlue : UIColor.label
+            return markedKeys.contains(key) ? .white : UIColor.white.withAlphaComponent(0.88)
         }
     }
 }

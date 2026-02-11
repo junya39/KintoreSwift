@@ -8,6 +8,7 @@ import SwiftUI
 struct ExerciseHistoryCard: View {
 
     let group: ExerciseHistoryGroup
+    let onTap: () -> Void
     
     private var totalVolume: Int {
         group.sets.reduce(0) {
@@ -17,6 +18,13 @@ struct ExerciseHistoryCard: View {
 
 
     var body: some View {
+        Button(action: onTap) {
+            cardContent
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 12) {
 
             // 種目名
