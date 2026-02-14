@@ -2,6 +2,7 @@
 
 import SwiftUI
 import Charts
+import UIKit
 
 private enum WorkoutSheet: String, Identifiable {
     case input
@@ -32,6 +33,7 @@ struct WorkoutView: View {
     @State private var isExerciseFilterEnabled: Bool
 
     @StateObject private var viewModel = ContentViewModel()
+    @EnvironmentObject private var userStatusVM: UserStatusViewModel
 
     // ✅ 日付タップで履歴へ遷移するためのフラグ
     @State private var showHistory = false
@@ -39,6 +41,10 @@ struct WorkoutView: View {
     @State private var selectedExerciseNameForDetail: String?
     @State private var showDeleteExerciseAlert = false
     @State private var deleteTargetExercise = ""
+    @State private var showXPToast = false
+    @State private var showLevelUpFlash = false
+    @State private var showLevelUpOverlay = false
+    @State private var levelUpScale: CGFloat = 0.5
 
     private let bodyParts = ["ALL", "胸", "背中", "脚", "肩", "腕", "腹筋"]
 
@@ -110,8 +116,11 @@ struct WorkoutView: View {
     // MARK: - Body
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
 
                     HeaderSection()
 
@@ -156,10 +165,52 @@ struct WorkoutView: View {
                     if !filteredDailyEntries.isEmpty {
                         TodaySummarySection(totalVolume: todayTotalVolume)
                     }
+                    }
+                    .padding(.bottom, 32)
                 }
-                .padding(.bottom, 32)
+
+                if showXPToast {
+                    Text("+\(userStatusVM.lastGainedXP) XP")
+                        .font(.headline)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.green.opacity(0.9))
+                        .foregroundColor(.black)
+                        .cornerRadius(12)
+                        .shadow(radius: 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(2)
+                        .padding(.top, 12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+
+                if showLevelUpFlash {
+                    Color.yellow
+                        .opacity(0.25)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                        .zIndex(3)
+                }
+
+                if showLevelUpOverlay {
+                    VStack(spacing: 8) {
+                        Text("LEVEL UP!")
+                            .font(.system(size: 40, weight: .black, design: .rounded))
+                            .foregroundColor(.yellow)
+                        Text("Lv \(userStatusVM.level)")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    .scaleEffect(levelUpScale)
+                    .shadow(color: .yellow, radius: 20)
+                    .shadow(color: .black.opacity(0.45), radius: 12, x: 0, y: 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+                    .zIndex(4)
+                }
             }
-            .background(Color.black.ignoresSafeArea())
             .navigationTitle("")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -212,6 +263,25 @@ struct WorkoutView: View {
             .onChange(of: selectedDate) { _, newValue in
                 viewModel.updateDailyEntries(for: newValue)
                 showHistory = true
+            }
+            .onChange(of: userStatusVM.lastGainedXP) { _, value in
+                guard value > 0 else { return }
+
+                withAnimation {
+                    showXPToast = true
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    withAnimation {
+                        showXPToast = false
+                        userStatusVM.lastGainedXP = 0
+                    }
+                }
+            }
+            .onChange(of: userStatusVM.didLevelUp) { _, value in
+                if value {
+                    triggerWorkoutLevelUp()
+                }
             }
 
             // ✅ iOS 16+ 推奨の遷移（deprecated回避）
@@ -288,7 +358,8 @@ struct WorkoutView: View {
             weight: weight,
             reps: reps,
             note: note.isEmpty ? nil : note,
-            side: selectedSide
+            side: selectedSide,
+            userStatusVM: userStatusVM
         )
 
         weightText = ""
@@ -345,6 +416,20 @@ struct WorkoutView: View {
         }
 
         deleteTargetExercise = ""
+    }
+
+    private func triggerWorkoutLevelUp() {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+            levelUpScale = 1.0
+            showLevelUpOverlay = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation {
+                showLevelUpOverlay = false
+            }
+            userStatusVM.didLevelUp = false
+        }
     }
 }
 
@@ -570,6 +655,10 @@ private struct DailyListSection: View {
 }
 
 private struct InputFormSection: View {
+    @EnvironmentObject private var userStatusVM: UserStatusViewModel
+    @State private var showLevelUpOverlay = false
+    @State private var levelUpScale: CGFloat = 0.3
+
     let selectedBodyPart: String
     let selectedExercise: String
     @Binding var isBodyweight: Bool
@@ -580,103 +669,153 @@ private struct InputFormSection: View {
     let onTapExercise: () -> Void
     let onAdd: () -> Void
 
+    private func triggerLevelUpAnimation() {
+        showLevelUpOverlay = true
+        levelUpScale = 0.3
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+        withAnimation(.easeOut(duration: 0.25)) {
+            levelUpScale = 1.3
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
+                levelUpScale = 1.0
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showLevelUpOverlay = false
+            }
+            userStatusVM.didLevelUp = false
+        }
+    }
+
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color.cardSub, Color.bg],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            ZStack {
+                LinearGradient(
+                    colors: [Color.cardSub, Color.bg],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 14) {
-                Capsule()
-                    .fill(Color.white.opacity(0.3))
-                    .frame(width: 44, height: 5)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 8)
+                VStack(alignment: .leading, spacing: 14) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.3))
+                        .frame(width: 44, height: 5)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
 
-                Text("セットを記録")
-                    .font(.title3.bold())
+                    Text("セットを記録")
+                        .font(.title3.bold())
+                        .foregroundColor(.white)
+
+                    HStack(spacing: 8) {
+                        Text(selectedBodyPart)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.accent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.accent.opacity(0.15))
+                            .clipShape(Capsule())
+
+                        Button(action: onTapExercise) {
+                            HStack(spacing: 4) {
+                                Text(selectedExercise.isEmpty ? "種目未選択" : selectedExercise)
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Toggle("自重トレーニング", isOn: $isBodyweight)
+                        .tint(.accent)
+                        .foregroundColor(.white.opacity(0.9))
+
+                    Picker("左右", selection: $selectedSide) {
+                        Text("左").tag("L")
+                        Text("右").tag("R")
+                        Text("なし").tag("")
+                    }
+                    .pickerStyle(.segmented)
+
+                    VStack(spacing: 10) {
+                        TextField("重量 (kg)", text: $weightText)
+                            .keyboardType(.decimalPad)
+                            .disabled(isBodyweight)
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 14)
+                            .background(Color.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        TextField("回数", text: $repsText)
+                            .keyboardType(.numberPad)
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 14)
+                            .background(Color.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        TextField("メモ", text: $note)
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 14)
+                            .background(Color.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
                     .foregroundColor(.white)
 
-                HStack(spacing: 8) {
-                    Text(selectedBodyPart)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.accent)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.accent.opacity(0.15))
-                        .clipShape(Capsule())
-
-                    Button(action: onTapExercise) {
-                        HStack(spacing: 4) {
-                            Text(selectedExercise.isEmpty ? "種目未選択" : selectedExercise)
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundColor(.white.opacity(0.7))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Toggle("自重トレーニング", isOn: $isBodyweight)
-                    .tint(.accent)
-                    .foregroundColor(.white.opacity(0.9))
-
-                Picker("左右", selection: $selectedSide) {
-                    Text("左").tag("L")
-                    Text("右").tag("R")
-                    Text("なし").tag("")
-                }
-                .pickerStyle(.segmented)
-
-                VStack(spacing: 10) {
-                    TextField("重量 (kg)", text: $weightText)
-                        .keyboardType(.decimalPad)
-                        .disabled(isBodyweight)
-                        .padding(.vertical, 14)
-                        .padding(.horizontal, 14)
-                        .background(Color.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                    TextField("回数", text: $repsText)
-                        .keyboardType(.numberPad)
-                        .padding(.vertical, 14)
-                        .padding(.horizontal, 14)
-                        .background(Color.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                    TextField("メモ", text: $note)
-                        .padding(.vertical, 14)
-                        .padding(.horizontal, 14)
-                        .background(Color.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .foregroundColor(.white)
-
-                Button(action: onAdd) {
-                    Text("このセットを追加")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.accent.opacity(0.95), Color.accent.opacity(0.75)],
-                                startPoint: .leading,
-                                endPoint: .trailing
+                    Button(action: onAdd) {
+                        Text("このセットを追加")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color.accent.opacity(0.95), Color.accent.opacity(0.75)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
                             )
-                        )
-                        .foregroundColor(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .foregroundColor(.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+            if showLevelUpOverlay {
+                VStack {
+                    Spacer()
+
+                    Text("LEVEL UP!")
+                        .font(.system(size: 48, weight: .heavy))
+                        .foregroundColor(.yellow)
+                        .shadow(color: .yellow.opacity(0.8), radius: 20)
+                        .scaleEffect(levelUpScale)
+
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black.opacity(0.4))
+                .ignoresSafeArea()
+                .transition(.opacity)
+                .zIndex(999)
+            }
+        }
+        .onChange(of: userStatusVM.didLevelUp) { _, value in
+            if value {
+                triggerLevelUpAnimation()
+            }
         }
     }
 }

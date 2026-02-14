@@ -4,6 +4,7 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = ContentViewModel()
+    @EnvironmentObject private var userStatusVM: UserStatusViewModel
     @State private var selectedBodyPart = "胸"
     @State private var selectedExercise = ""
 
@@ -54,14 +55,14 @@ struct HomeView: View {
 
                     // レベルカード（仮）
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("レベル \(homeMetrics.level)")
+                        Text("レベル \(userStatusVM.level)")
                             .font(.headline)
                             .foregroundColor(.white)
 
-                        ProgressView(value: homeMetrics.levelProgress)
+                        ProgressView(value: userStatusVM.getProgress())
                             .tint(.green)
 
-                        Text("\(homeMetrics.currentXP.formatted()) / \(homeMetrics.nextLevelXP.formatted()) 経験値")
+                        Text("\(userStatusVM.currentXP.formatted()) / \(userStatusVM.requiredXP(for: userStatusVM.level).formatted()) XP")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.6))
                     }

@@ -4,6 +4,8 @@ import SwiftUI
 final class UserStatusViewModel: ObservableObject {
     @Published var level: Int
     @Published var currentXP: Int
+    @Published var lastGainedXP: Int = 0
+    @Published var didLevelUp: Bool = false
 
     // 種目ごとの基準値（将来の永続化対象）
     @Published private(set) var baselines: [String: Double]
@@ -30,6 +32,7 @@ final class UserStatusViewModel: ObservableObject {
         let gainedXP = Int(baseXP * multiplier)
 
         currentXP += gainedXP
+        lastGainedXP = gainedXP
 
         // baselineを指数移動平均で更新
         baselines[exerciseId] = baseline * 0.9 + volume * 0.1
@@ -38,6 +41,7 @@ final class UserStatusViewModel: ObservableObject {
         while currentXP >= requiredXP(for: level) {
             currentXP -= requiredXP(for: level)
             level += 1
+            didLevelUp = true
         }
     }
 

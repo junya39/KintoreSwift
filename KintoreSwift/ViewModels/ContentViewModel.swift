@@ -5,15 +5,9 @@ import Foundation
 
 final class ContentViewModel: ObservableObject {
     struct HomeMetrics {
-        let level: Int
-        let levelProgress: Double
-        let currentXP: Int
-        let nextLevelXP: Int
         let totalVolume: Int
         let streakDays: Int
     }
-
-    private let xpPerLevel = 500
 
     @Published var entries: [SetEntry] = []
     @Published var exercises: [String: [String]] = [:]
@@ -40,7 +34,8 @@ final class ContentViewModel: ObservableObject {
         weight: Double,
         reps: Int,
         note: String?,
-        side: String
+        side: String,
+        userStatusVM: UserStatusViewModel? = nil
     ) {
         DatabaseManager.shared.insert(
             date: date,
@@ -51,6 +46,10 @@ final class ContentViewModel: ObservableObject {
             note: note,
             side: side
         )
+
+        // 保存完了後に、今回セットのボリューム分XPを加算
+        let totalVolume = max(0, weight) * Double(reps)
+        userStatusVM?.addXP(volume: totalVolume, exerciseId: exercise)
 
         reloadAfterChange(
             selectedDate: date,
@@ -156,16 +155,9 @@ final class ContentViewModel: ObservableObject {
 
     var homeMetrics: HomeMetrics {
         let totalVolume = Int(entries.reduce(0) { $0 + ($1.weight * Double($1.reps)) })
-        let level = max(1, totalVolume / xpPerLevel + 1)
-        let currentXP = totalVolume % xpPerLevel
-        let levelProgress = Double(currentXP) / Double(xpPerLevel)
         let streakDays = calculateStreakDays()
 
         return HomeMetrics(
-            level: level,
-            levelProgress: levelProgress,
-            currentXP: currentXP,
-            nextLevelXP: xpPerLevel,
             totalVolume: totalVolume,
             streakDays: streakDays
         )
