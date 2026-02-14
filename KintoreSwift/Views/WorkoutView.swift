@@ -35,6 +35,10 @@ struct WorkoutView: View {
 
     // ✅ 日付タップで履歴へ遷移するためのフラグ
     @State private var showHistory = false
+    @State private var showExerciseDetail = false
+    @State private var selectedExerciseNameForDetail: String?
+    @State private var showDeleteExerciseAlert = false
+    @State private var deleteTargetExercise = ""
 
     private let bodyParts = ["ALL", "胸", "背中", "脚", "肩", "腕", "腹筋"]
 
@@ -70,6 +74,7 @@ struct WorkoutView: View {
     private var allExercisesSortedByRecent: [String] {
         var all = Set(viewModel.exercises.values.flatMap { $0 })
         all.formUnion(viewModel.entries.map { $0.exercise })
+        all.subtract(viewModel.deletedExerciseNames)
         return all.sorted { lhs, rhs in
             let lhsDate = exerciseLastUpdatedAt[lhs] ?? .distantPast
             let rhsDate = exerciseLastUpdatedAt[rhs] ?? .distantPast
@@ -129,6 +134,9 @@ struct WorkoutView: View {
                         selectedExercise: $selectedExercise,
                         exercises: displayedExercises,
                         onAdd: { activeSheet = .addExercise },
+                        onDeleteExercise: { exercise in
+                            requestExerciseDeletion(exercise)
+                        },
                         onSelectExercise: {
                             isExerciseFilterEnabled = true
                             guard activeSheet != .addExercise else { return }
@@ -191,6 +199,14 @@ struct WorkoutView: View {
                     didSetInitialSheetState = true
                 }
             }
+            .alert("種目を削除", isPresented: $showDeleteExerciseAlert) {
+                Button("キャンセル", role: .cancel) {}
+                Button("削除", role: .destructive) {
+                    confirmExerciseDeletion()
+                }
+            } message: {
+                Text("「\(deleteTargetExercise)」を種目一覧から削除します。")
+            }
 
             // ✅ カレンダーで日付が変わった瞬間に「その日」の一覧へ
             .onChange(of: selectedDate) { _, newValue in
@@ -204,6 +220,14 @@ struct WorkoutView: View {
                 HistoryView(selectedDate: selectedDate)
                     .environmentObject(viewModel)
             }
+            .navigationDestination(isPresented: $showExerciseDetail) {
+                if let name = selectedExerciseNameForDetail {
+                    ExerciseDetailView(
+                        exerciseName: name,
+                        contentViewModel: viewModel
+                    )
+                }
+            }
             .sheet(item: $activeSheet) { sheet in
                 switch sheet {
                 case .input:
@@ -215,6 +239,9 @@ struct WorkoutView: View {
                         weightText: $weightText,
                         repsText: $repsText,
                         note: $note,
+                        onTapExercise: {
+                            openExerciseDetailFromInputForm()
+                        },
                         onAdd: addSet
                     )
                     .presentationDetents([.medium, .large])
@@ -279,6 +306,45 @@ struct WorkoutView: View {
         )
         selectedExercise = newExerciseName
         newExerciseName = ""
+    }
+
+    private func openExerciseDetailFromInputForm() {
+        guard !selectedExercise.isEmpty else { return }
+        selectedExerciseNameForDetail = selectedExercise
+        activeSheet = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            showExerciseDetail = true
+        }
+    }
+
+    private func requestExerciseDeletion(_ name: String) {
+        guard !name.isEmpty else { return }
+        deleteTargetExercise = name
+        showDeleteExerciseAlert = true
+    }
+
+    private func confirmExerciseDeletion() {
+        let name = deleteTargetExercise
+        guard !name.isEmpty else { return }
+
+        viewModel.deleteExercise(
+            name: name,
+            selectedDate: selectedDate,
+            selectedExercise: selectedExercise
+        )
+
+        let availableExercises = exercises(for: selectedBodyPart)
+        if selectedExercise == name {
+            selectedExercise = availableExercises.first ?? ""
+        }
+        if selectedExerciseNameForDetail == name {
+            selectedExerciseNameForDetail = nil
+        }
+        if selectedExercise.isEmpty {
+            isExerciseFilterEnabled = false
+        }
+
+        deleteTargetExercise = ""
     }
 }
 
@@ -368,6 +434,7 @@ private struct ExercisePickerSection: View {
     @Binding var selectedExercise: String
     let exercises: [String]
     let onAdd: () -> Void
+    let onDeleteExercise: (String) -> Void
     let onSelectExercise: () -> Void
 
     var body: some View {
@@ -409,6 +476,13 @@ private struct ExercisePickerSection: View {
                                         : Color.cardSub
                                     )
                                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    onDeleteExercise(exercise)
+                                } label: {
+                                    Label("削除", systemImage: "trash")
+                                }
                             }
                         }
                     }
@@ -503,6 +577,7 @@ private struct InputFormSection: View {
     @Binding var weightText: String
     @Binding var repsText: String
     @Binding var note: String
+    let onTapExercise: () -> Void
     let onAdd: () -> Void
 
     var body: some View {
@@ -534,10 +609,18 @@ private struct InputFormSection: View {
                         .background(Color.accent.opacity(0.15))
                         .clipShape(Capsule())
 
-                    Text(selectedExercise.isEmpty ? "種目未選択" : selectedExercise)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .lineLimit(1)
+                    Button(action: onTapExercise) {
+                        HStack(spacing: 4) {
+                            Text(selectedExercise.isEmpty ? "種目未選択" : selectedExercise)
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 Toggle("自重トレーニング", isOn: $isBodyweight)

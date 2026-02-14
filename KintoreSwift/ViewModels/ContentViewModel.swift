@@ -22,8 +22,11 @@ final class ContentViewModel: ObservableObject {
     @Published var diffText: String = ""
     @Published var diffColor: Color = .secondary
     @Published var chartGrouping: GroupingType = .day
+    @Published private(set) var deletedExerciseNames: Set<String> = []
     func loadInitialData() {
         DatabaseManager.shared.createExerciseTableIfNeeded()
+        DatabaseManager.shared.createDeletedExerciseTableIfNeeded()
+        deletedExerciseNames = DatabaseManager.shared.fetchDeletedExerciseNames()
         exercises = DatabaseManager.shared.fetchExercisesByBodyPart()
         entries = DatabaseManager.shared.fetchAll()
     }
@@ -82,6 +85,17 @@ final class ContentViewModel: ObservableObject {
         exercises = DatabaseManager.shared.fetchExercisesByBodyPart()
     }
 
+    func deleteExercise(name: String, selectedDate: Date, selectedExercise: String) {
+        DatabaseManager.shared.deleteExercise(name: name)
+        deletedExerciseNames = DatabaseManager.shared.fetchDeletedExerciseNames()
+
+        reloadAfterChange(
+            selectedDate: selectedDate,
+            selectedExercise: selectedExercise
+        )
+        exercises = DatabaseManager.shared.fetchExercisesByBodyPart()
+    }
+
     // MARK: - 共通更新処理
 
     private func reloadAfterChange(
@@ -122,7 +136,8 @@ final class ContentViewModel: ObservableObject {
             name: name,
             bodyPart: bodyPart
         )
-        exercises[bodyPart, default: []].append(name)
+        deletedExerciseNames = DatabaseManager.shared.fetchDeletedExerciseNames()
+        exercises = DatabaseManager.shared.fetchExercisesByBodyPart()
     }
     
     func lastSetText(for exercise: String) -> String? {

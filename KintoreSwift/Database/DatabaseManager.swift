@@ -78,6 +78,7 @@ final class DatabaseManager {
         migrateSideColumnIfNeeded()
 
         createExerciseTableIfNeeded()
+        createDeletedExerciseTableIfNeeded()
     }
 
     /// 既存の sets テーブルに side カラムが無い場合は追加する
@@ -129,9 +130,33 @@ final class DatabaseManager {
         }
     }
 
+    func createDeletedExerciseTableIfNeeded() {
+        guard db != nil else { return }
+
+        let query = """
+        CREATE TABLE IF NOT EXISTS deleted_exercises (
+            name TEXT PRIMARY KEY
+        );
+        """
+        if sqlite3_exec(db, query, nil, nil, nil) != SQLITE_OK {
+            print("❌ deleted_exercises テーブル作成失敗")
+        } else {
+            print("✅ deleted_exercises テーブル確認完了")
+        }
+    }
+
     // MARK: - 種目追加
     func insertExercise(name: String, bodyPart: String) {
         guard db != nil else { return }
+
+        // 同名の削除済みマークがあれば解除
+        let restoreQuery = "DELETE FROM deleted_exercises WHERE name = ?;"
+        var restoreStmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, restoreQuery, -1, &restoreStmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(restoreStmt, 1, (name as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(restoreStmt)
+        }
+        sqlite3_finalize(restoreStmt)
 
         let query = "INSERT INTO exercises (name, bodyPart) VALUES (?, ?);"
         var stmt: OpaquePointer?
@@ -154,6 +179,7 @@ final class DatabaseManager {
         guard db != nil else { return [:] }
 
         var result: [String: [String]] = [:]
+        let deletedNames = fetchDeletedExerciseNames()
         let query = "SELECT name, bodyPart FROM exercises ORDER BY id ASC;"
         var stmt: OpaquePointer?
 
@@ -163,6 +189,7 @@ final class DatabaseManager {
                    let bodyPartPtr = sqlite3_column_text(stmt, 1) {
                     let name = String(cString: namePtr)
                     let bodyPart = String(cString: bodyPartPtr)
+                    if deletedNames.contains(name) { continue }
                     result[bodyPart, default: []].append(name)
                 }
             }
@@ -181,13 +208,51 @@ final class DatabaseManager {
 
         for (part, items) in defaults {
             var merged = result[part] ?? []
-            for item in items where !merged.contains(item) {
+            for item in items where !merged.contains(item) && !deletedNames.contains(item) {
                 merged.append(item)
             }
             result[part] = merged
         }
 
         return result
+    }
+
+    func fetchDeletedExerciseNames() -> Set<String> {
+        guard db != nil else { return [] }
+
+        var names = Set<String>()
+        let query = "SELECT name FROM deleted_exercises;"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let namePtr = sqlite3_column_text(stmt, 0) {
+                    names.insert(String(cString: namePtr))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return names
+    }
+
+    func deleteExercise(name: String) {
+        guard db != nil else { return }
+
+        let markQuery = "INSERT OR IGNORE INTO deleted_exercises (name) VALUES (?);"
+        var markStmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, markQuery, -1, &markStmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(markStmt, 1, (name as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(markStmt)
+        }
+        sqlite3_finalize(markStmt)
+
+        let deleteQuery = "DELETE FROM exercises WHERE name = ?;"
+        var deleteStmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, deleteQuery, -1, &deleteStmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(deleteStmt, 1, (name as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(deleteStmt)
+        }
+        sqlite3_finalize(deleteStmt)
     }
 
     // MARK: - 種目名から部位取得

@@ -1,17 +1,17 @@
 {
   "images" : [
     {
-      "filename" : "KintoreSwift_AppIcon_1024.png",
+      "filename" : "launchIcon.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
-      "filename" : "KintoreSwift_AppIcon_1024.png",
+      "filename" : "launchIcon.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
-      "filename" : "KintoreSwift_AppIcon_1024.png",
+      "filename" : "launchIcon.png",
       "idiom" : "universal",
       "scale" : "3x"
     }

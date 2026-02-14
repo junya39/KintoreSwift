@@ -66,196 +66,16 @@ struct ExerciseDetailView: View {
 
     var body: some View {
         ZStack {
+            Color.black.ignoresSafeArea()
             List {
-                // ---------------------
-                // タイトル
-                // ---------------------
-                Section {
-                    Text("\(exerciseName) の履歴")
-                        .font(.title2)
-                        .bold()
-                        .foregroundColor(.white)
-                        .padding(.horizontal)
-                }
-                .listRowBackground(Color.black)
-
-                // ---------------------
-                // 統計
-                // ---------------------
-                if !viewModel.history.isEmpty {
-
-                    let stats = calculateStats(for: viewModel.history)
-
-                    Section {
-                        VStack(alignment: .leading, spacing: 6) {
-
-                            // 重量系（ラット・ロウなど）
-                            if stats.maxWeight > 0 {
-                                Text("平均重量: \(String(format: "%.1f", stats.avgWeight)) kg")
-                                Text("最大重量: \(Int(stats.maxWeight)) kg")
-                            }
-
-                            Text("総レップ数: \(stats.totalReps)")
-
-                            // 自重チンニング
-                            if stats.bodyweightSets > 0 {
-                                Divider().padding(.vertical, 4)
-                                Text("チンニング最大回数: \(stats.bodyweightMaxReps) 回")
-                                Text("チンニング合計回数: \(stats.bodyweightTotalReps) 回")
-                            }
-                        }
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.85))
-                        .padding(.horizontal)
-                    }
-                    .listRowBackground(Color.black)
-                }
-
-                // ---------------------
-                // グラフ（重量トレのみ）
-                // ---------------------
-                // ---------------------
-                // グラフ
-                // ---------------------
-                if !groupedHistory.isEmpty {
-
-                    Section {
-                        Chart {
-                            ForEach(groupedHistory, id: \.0) { day, entries in
-
-                                if isBodyweightOnly {
-                                    // ✅ 自重種目：回数グラフ
-                                    if let maxReps = entries.map({ $0.reps }).max() {
-                                        LineMark(
-                                            x: .value("日付", day),
-                                            y: .value("回数", maxReps)
-                                        )
-                                        .symbol(.circle)
-                                    }
-
-                                } else {
-                                    // ✅ 加重種目：重量グラフ
-                                    if let maxWeight = entries.map({ $0.weight }).max() {
-                                        LineMark(
-                                            x: .value("日付", day),
-                                            y: .value("重量", maxWeight)
-                                        )
-                                        .symbol(.circle)
-                                    }
-                                }
-                            }
-                        }
-                        .frame(height: 200)
-                        .padding(.horizontal)
-                        .chartXAxis {
-                            AxisMarks {
-                                AxisGridLine(stroke: StrokeStyle(lineWidth: 1))
-                                    .foregroundStyle(Color.white.opacity(0.15))
-                                AxisTick()
-                                    .foregroundStyle(Color.white.opacity(0.35))
-                                AxisValueLabel(format: .dateTime.month().day().locale(Locale(identifier: "ja_JP")))
-                                    .foregroundStyle(Color.white.opacity(0.7))
-                            }
-                        }
-                        .chartYAxis {
-                            AxisMarks(position: .trailing) {
-                                AxisGridLine(stroke: StrokeStyle(lineWidth: 1))
-                                    .foregroundStyle(Color.white.opacity(0.12))
-                                AxisTick()
-                                    .foregroundStyle(Color.white.opacity(0.35))
-                                AxisValueLabel()
-                                    .foregroundStyle(Color.white.opacity(0.7))
-                            }
-                        }
-                    }
-                    .listRowBackground(Color.black)
-                }
-
-
-                // ---------------------
-                // 履歴一覧
-                // ---------------------
-                if groupedHistory.isEmpty {
-
-                    Section {
-                        Text("この種目の記録はまだありません。")
-                            .foregroundColor(.white.opacity(0.7))
-                            .padding(.horizontal)
-                    }
-                    .listRowBackground(Color.black)
-
-                } else {
-
-                    ForEach(groupedHistory, id: \.0) { day, entries in
-                        Section {
-                            ForEach(entries, id: \.id) { entry in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-
-                                        if entry.weight == 0 {
-                                            Text("自重 × \(entry.reps) 回")
-                                                .font(.body)
-                                        } else {
-                                            Text("\(Int(entry.weight)) kg × \(entry.reps) 回")
-                                                .font(.body)
-                                        }
-
-                                        if let side = entry.side, !side.isEmpty {
-                                            Text(side == "R" ? "(右)" : "(左)")
-                                                .font(.caption)
-                                                .foregroundColor(.gray)
-                                        }
-
-                                        Spacer()
-
-                                        Button(role: .destructive) {
-                                            viewModel.delete(entry: entry)
-                                        } label: {
-                                            Image(systemName: "trash")
-                                                .font(.caption.weight(.bold))
-                                                .foregroundColor(.red)
-                                                .padding(6)
-                                                .background(Color.red.opacity(0.12))
-                                                .clipShape(Circle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-
-                                    if let note = entry.note, !note.isEmpty {
-                                        Text("💬 \(note)")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .padding(8)
-                                .background(Color(.systemGray6))
-                                .cornerRadius(6)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    editingEntry = entry
-                                    isNewEntry = false
-                                    isEditSheetPresented = true
-                                }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        viewModel.delete(entry: entry)
-                                    } label: {
-                                        Label("削除", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        } header: {
-                            Text(japaneseDateText(day))
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.9))
-                        }
-                        .listRowBackground(Color.black)
-                    }
-                }
-
+                titleSection
+                statsSection
+                chartSection
+                historySection
             }
             .listStyle(.plain)
-            .background(Color.black)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
             .onAppear {
                 viewModel.load(exercise: exerciseName)
             }
@@ -300,6 +120,189 @@ struct ExerciseDetailView: View {
         }
 
         .navigationTitle(exerciseName)
+    }
+
+    @ViewBuilder
+    private var titleSection: some View {
+        Section {
+            Text("\(exerciseName) の履歴")
+                .font(.title2)
+                .bold()
+                .foregroundColor(.white)
+                .padding(.horizontal)
+        }
+        .listRowBackground(Color.black)
+    }
+
+    @ViewBuilder
+    private var statsSection: some View {
+        if !viewModel.history.isEmpty {
+            let stats = calculateStats(for: viewModel.history)
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    if stats.maxWeight > 0 {
+                        Text("平均重量: \(String(format: "%.1f", stats.avgWeight)) kg")
+                        Text("最大重量: \(Int(stats.maxWeight)) kg")
+                    }
+
+                    Text("総レップ数: \(stats.totalReps)")
+
+                    if stats.bodyweightSets > 0 {
+                        Divider().padding(.vertical, 4)
+                        Text("チンニング最大回数: \(stats.bodyweightMaxReps) 回")
+                        Text("チンニング合計回数: \(stats.bodyweightTotalReps) 回")
+                    }
+                }
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.85))
+                .padding(.horizontal)
+            }
+            .listRowBackground(Color.black)
+        }
+    }
+
+    @ViewBuilder
+    private var chartSection: some View {
+        if !groupedHistory.isEmpty {
+            Section {
+                Chart {
+                    ForEach(groupedHistory, id: \.0) { day, entries in
+                        if isBodyweightOnly {
+                            if let maxReps = entries.map({ $0.reps }).max() {
+                                LineMark(
+                                    x: .value("日付", day),
+                                    y: .value("回数", maxReps)
+                                )
+                                .symbol(.circle)
+                            }
+                        } else {
+                            if let maxWeight = entries.map({ $0.weight }).max() {
+                                LineMark(
+                                    x: .value("日付", day),
+                                    y: .value("重量", maxWeight)
+                                )
+                                .symbol(.circle)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 200)
+                .padding(.horizontal)
+                .chartXAxis {
+                    AxisMarks {
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 1))
+                            .foregroundStyle(Color.white.opacity(0.15))
+                        AxisTick()
+                            .foregroundStyle(Color.white.opacity(0.35))
+                        AxisValueLabel(format: .dateTime.month().day().locale(Locale(identifier: "ja_JP")))
+                            .foregroundStyle(Color.white.opacity(0.7))
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .trailing) {
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 1))
+                            .foregroundStyle(Color.white.opacity(0.12))
+                        AxisTick()
+                            .foregroundStyle(Color.white.opacity(0.35))
+                        AxisValueLabel()
+                            .foregroundStyle(Color.white.opacity(0.7))
+                    }
+                }
+            }
+            .listRowBackground(Color.black)
+        }
+    }
+
+    @ViewBuilder
+    private var historySection: some View {
+        if groupedHistory.isEmpty {
+            Section {
+                Text("この種目の記録はまだありません。")
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.horizontal)
+            }
+            .listRowBackground(Color.black)
+        } else {
+            ForEach(groupedHistory, id: \.0) { day, entries in
+                Section {
+                    ForEach(entries, id: \.id) { entry in
+                        entryRow(entry)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
+                } header: {
+                    Text(japaneseDateText(day))
+                        .font(.headline)
+                        .foregroundColor(.white.opacity(0.9))
+                        .textCase(nil)
+                }
+                .listRowBackground(Color.clear)
+            }
+        }
+    }
+
+    private func entryRow(_ entry: SetEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                if entry.weight == 0 {
+                    Text("自重 × \(entry.reps) 回")
+                        .font(.body)
+                        .foregroundColor(.white)
+                } else {
+                    Text("\(Int(entry.weight)) kg × \(entry.reps) 回")
+                        .font(.body)
+                        .foregroundColor(.white)
+                }
+
+                if let side = entry.side, !side.isEmpty {
+                    Text(side == "R" ? "(右)" : "(左)")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.55))
+                }
+
+                Spacer()
+
+                Button(role: .destructive) {
+                    viewModel.delete(entry: entry)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.red)
+                        .padding(6)
+                        .background(Color.red.opacity(0.12))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let note = entry.note, !note.isEmpty {
+                Text("💬 \(note)")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.65))
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .background(Color.white.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            editingEntry = entry
+            isNewEntry = false
+            isEditSheetPresented = true
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                viewModel.delete(entry: entry)
+            } label: {
+                Label("削除", systemImage: "trash")
+            }
+        }
     }
 
     // ---------------------
