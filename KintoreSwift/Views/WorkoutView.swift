@@ -41,7 +41,6 @@ struct WorkoutView: View {
     @State private var selectedExerciseNameForDetail: String?
     @State private var showDeleteExerciseAlert = false
     @State private var deleteTargetExercise = ""
-    @State private var showXPToast = false
     @State private var showLevelUpFlash = false
     @State private var showLevelUpOverlay = false
     @State private var levelUpScale: CGFloat = 0.5
@@ -169,21 +168,6 @@ struct WorkoutView: View {
                     .padding(.bottom, 32)
                 }
 
-                if showXPToast {
-                    Text("+\(userStatusVM.lastGainedXP) XP")
-                        .font(.headline)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color.green.opacity(0.9))
-                        .foregroundColor(.black)
-                        .cornerRadius(12)
-                        .shadow(radius: 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .zIndex(2)
-                        .padding(.top, 12)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                }
-
                 if showLevelUpFlash {
                     Color.yellow
                         .opacity(0.25)
@@ -263,20 +247,6 @@ struct WorkoutView: View {
             .onChange(of: selectedDate) { _, newValue in
                 viewModel.updateDailyEntries(for: newValue)
                 showHistory = true
-            }
-            .onChange(of: userStatusVM.lastGainedXP) { _, value in
-                guard value > 0 else { return }
-
-                withAnimation {
-                    showXPToast = true
-                }
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    withAnimation {
-                        showXPToast = false
-                        userStatusVM.lastGainedXP = 0
-                    }
-                }
             }
             .onChange(of: userStatusVM.didLevelUp) { _, value in
                 if value {
@@ -361,6 +331,12 @@ struct WorkoutView: View {
             side: selectedSide,
             userStatusVM: userStatusVM
         )
+
+        let gainedXP = userStatusVM.lastGainedXP
+        if gainedXP > 0 {
+            XPToastCenter.shared.show(xp: gainedXP)
+            userStatusVM.lastGainedXP = 0
+        }
 
         weightText = ""
         repsText = ""
@@ -656,6 +632,7 @@ private struct DailyListSection: View {
 
 private struct InputFormSection: View {
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
+    @ObservedObject private var toastCenter = XPToastCenter.shared
     @State private var showLevelUpOverlay = false
     @State private var levelUpScale: CGFloat = 0.3
 
@@ -713,6 +690,33 @@ private struct InputFormSection: View {
                     Text("セットを記録")
                         .font(.title3.bold())
                         .foregroundColor(.white)
+
+                    if let item = toastCenter.current {
+                        HStack(spacing: 8) {
+                            Image(systemName: "bolt.fill")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.yellow)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("+\(item.amount) XP")
+                                    .font(.headline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                if let comboText = item.comboText {
+                                    Text(comboText)
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
+                        )
+                        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
 
                     HStack(spacing: 8) {
                         Text(selectedBodyPart)
@@ -817,5 +821,6 @@ private struct InputFormSection: View {
                 triggerLevelUpAnimation()
             }
         }
+        .animation(.spring(response: 0.45, dampingFraction: 0.82), value: toastCenter.current?.id)
     }
 }
