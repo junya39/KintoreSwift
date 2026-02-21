@@ -31,8 +31,12 @@ struct WorkoutView: View {
     @State private var activeSheet: WorkoutSheet?
     @State private var didSetInitialSheetState = false
     @State private var isExerciseFilterEnabled: Bool
+    @State private var isEditingTimer = false
+    @State private var tempMinute = 2
+    @State private var tempSecond = 0
 
     @StateObject private var viewModel = ContentViewModel()
+    @StateObject private var timerVM = IntervalTimerViewModel()
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
 
     // ✅ 日付タップで履歴へ遷移するためのフラグ
@@ -42,8 +46,6 @@ struct WorkoutView: View {
     @State private var showDeleteExerciseAlert = false
     @State private var deleteTargetExercise = ""
     @State private var showLevelUpFlash = false
-    @State private var showLevelUpOverlay = false
-    @State private var levelUpScale: CGFloat = 0.5
 
     private let bodyParts = ["ALL", "胸", "背中", "脚", "肩", "腕", "腹筋"]
 
@@ -154,6 +156,42 @@ struct WorkoutView: View {
                         }
                     )
 
+                    IntervalTimerSection(
+                        remainingSeconds: timerVM.remainingSeconds,
+                        isRunning: timerVM.isRunning,
+                        isEditingTimer: $isEditingTimer,
+                        tempMinute: $tempMinute,
+                        tempSecond: $tempSecond,
+                        onTimeTap: {
+                            timerVM.stop()
+                            let total = min(timerVM.duration, 3600)
+                            tempMinute = total / 60
+                            tempSecond = total % 60
+                            isEditingTimer = true
+                        },
+                        onDoneTap: {
+                            let newValue = tempMinute * 60 + tempSecond
+                            if newValue > 0 {
+                                timerVM.duration = newValue
+                                timerVM.reset()
+                            }
+                            isEditingTimer = false
+                        },
+                        onPrimaryTap: {
+                            if timerVM.isRunning {
+                                timerVM.stop()
+                            } else {
+                                if timerVM.remainingSeconds == 0 {
+                                    timerVM.reset()
+                                }
+                                timerVM.start()
+                            }
+                        },
+                        onResetTap: {
+                            timerVM.reset()
+                        }
+                    )
+
                     DailyListSection(
                         dailyEntries: filteredDailyEntries,
                         selectedBodyPart: selectedBodyPart,
@@ -177,23 +215,6 @@ struct WorkoutView: View {
                         .zIndex(3)
                 }
 
-                if showLevelUpOverlay {
-                    VStack(spacing: 8) {
-                        Text("LEVEL UP!")
-                            .font(.system(size: 40, weight: .black, design: .rounded))
-                            .foregroundColor(.yellow)
-                        Text("Lv \(userStatusVM.level)")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                    }
-                    .scaleEffect(levelUpScale)
-                    .shadow(color: .yellow, radius: 20)
-                    .shadow(color: .black.opacity(0.45), radius: 12, x: 0, y: 8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .transition(.opacity)
-                    .allowsHitTesting(false)
-                    .zIndex(4)
-                }
             }
             .navigationTitle("")
             .toolbar {
@@ -234,6 +255,9 @@ struct WorkoutView: View {
                     didSetInitialSheetState = true
                 }
             }
+            .onDisappear {
+                timerVM.stop()
+            }
             .alert("種目を削除", isPresented: $showDeleteExerciseAlert) {
                 Button("キャンセル", role: .cancel) {}
                 Button("削除", role: .destructive) {
@@ -248,10 +272,9 @@ struct WorkoutView: View {
                 viewModel.updateDailyEntries(for: newValue)
                 showHistory = true
             }
-            .onChange(of: userStatusVM.didLevelUp) { _, value in
-                if value {
-                    triggerWorkoutLevelUp()
-                }
+            .onChange(of: userStatusVM.level) { oldLevel, newLevel in
+                guard newLevel > oldLevel else { return }
+                userStatusVM.levelUpEvent = newLevel
             }
 
             // ✅ iOS 16+ 推奨の遷移（deprecated回避）
@@ -343,6 +366,9 @@ struct WorkoutView: View {
         note = ""
         selectedSide = ""
         isBodyweight = false
+
+        timerVM.reset()
+        timerVM.start()
     }
 
     private func addNewExercise() {
@@ -394,19 +420,6 @@ struct WorkoutView: View {
         deleteTargetExercise = ""
     }
 
-    private func triggerWorkoutLevelUp() {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
-            levelUpScale = 1.0
-            showLevelUpOverlay = true
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            withAnimation {
-                showLevelUpOverlay = false
-            }
-            userStatusVM.didLevelUp = false
-        }
-    }
 }
 
 //
@@ -557,6 +570,103 @@ private struct ExercisePickerSection: View {
     }
 }
 
+private struct IntervalTimerSection: View {
+    let remainingSeconds: Int
+    let isRunning: Bool
+    @Binding var isEditingTimer: Bool
+    @Binding var tempMinute: Int
+    @Binding var tempSecond: Int
+    let onTimeTap: () -> Void
+    let onDoneTap: () -> Void
+    let onPrimaryTap: () -> Void
+    let onResetTap: () -> Void
+
+    private var timeText: String {
+        let minutes = remainingSeconds / 60
+        let seconds = remainingSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("タイマー")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.65))
+                    Text(timeText)
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .monospacedDigit()
+                        .onTapGesture(perform: onTimeTap)
+                }
+
+                Spacer()
+
+                if !isEditingTimer {
+                    Button(action: onPrimaryTap) {
+                        Text(isRunning ? "停止" : "開始")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color.accent)
+                            .clipShape(Capsule())
+                    }
+
+                    Button(action: onResetTap) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.12))
+                            .clipShape(Circle())
+                    }
+                }
+            }
+
+            if isEditingTimer {
+                VStack(spacing: 8) {
+                    HStack(spacing: 0) {
+                        Picker("", selection: $tempMinute) {
+                            ForEach(0...60, id: \.self) { value in
+                                Text("\(value)分").tag(value)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(maxWidth: .infinity)
+
+                        Picker("", selection: $tempSecond) {
+                            ForEach(0..<60, id: \.self) { value in
+                                Text("\(value)秒").tag(value)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .frame(height: 200)
+
+                    Button("完了") {
+                        onDoneTap()
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.accent)
+                    .clipShape(Capsule())
+                }
+                .transition(.move(edge: .bottom))
+            }
+        }
+        .padding()
+        .background(Color.card)
+        .cornerRadius(16)
+        .padding(.horizontal, 16)
+        .animation(.easeInOut(duration: 0.2), value: isEditingTimer)
+    }
+}
+
 private struct DailyListSection: View {
     let dailyEntries: [SetEntry]
     let selectedBodyPart: String
@@ -631,10 +741,9 @@ private struct DailyListSection: View {
 }
 
 private struct InputFormSection: View {
-    @EnvironmentObject private var userStatusVM: UserStatusViewModel
     @ObservedObject private var toastCenter = XPToastCenter.shared
-    @State private var showLevelUpOverlay = false
-    @State private var levelUpScale: CGFloat = 0.3
+    @EnvironmentObject private var userStatusVM: UserStatusViewModel
+    @State private var levelUpOverlayLevel: Int?
 
     let selectedBodyPart: String
     let selectedExercise: String
@@ -645,30 +754,6 @@ private struct InputFormSection: View {
     @Binding var note: String
     let onTapExercise: () -> Void
     let onAdd: () -> Void
-
-    private func triggerLevelUpAnimation() {
-        showLevelUpOverlay = true
-        levelUpScale = 0.3
-
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-
-        withAnimation(.easeOut(duration: 0.25)) {
-            levelUpScale = 1.3
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
-                levelUpScale = 1.0
-            }
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            withAnimation(.easeOut(duration: 0.3)) {
-                showLevelUpOverlay = false
-            }
-            userStatusVM.didLevelUp = false
-        }
-    }
 
     var body: some View {
         ZStack {
@@ -692,29 +777,34 @@ private struct InputFormSection: View {
                         .foregroundColor(.white)
 
                     if let item = toastCenter.current {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 12) {
                             Image(systemName: "bolt.fill")
-                                .font(.subheadline.weight(.bold))
+                                .font(.title3.weight(.black))
                                 .foregroundStyle(.yellow)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("+\(item.amount) XP")
-                                    .font(.headline.weight(.semibold))
+                                    .font(.title2.weight(.heavy))
                                     .foregroundStyle(.white)
                                 if let comboText = item.comboText {
                                     Text(comboText)
-                                        .font(.caption.weight(.bold))
-                                        .foregroundStyle(.orange)
+                                        .font(.subheadline.weight(.black))
+                                        .foregroundStyle(.yellow)
                                 }
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 14)
+                        .background(
+                            Capsule()
+                                .fill(Color.black.opacity(0.75))
+                        )
                         .overlay(
                             Capsule()
-                                .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
+                                .strokeBorder(.yellow.opacity(0.55), lineWidth: 1.2)
                         )
-                        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
+                        .shadow(color: .yellow.opacity(0.35), radius: 16, x: 0, y: 0)
+                        .shadow(color: .black.opacity(0.4), radius: 16, x: 0, y: 8)
+                        .scaleEffect(item.comboText == nil ? 1.0 : 1.07)
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
@@ -797,30 +887,18 @@ private struct InputFormSection: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
 
-            if showLevelUpOverlay {
-                VStack {
-                    Spacer()
-
-                    Text("LEVEL UP!")
-                        .font(.system(size: 48, weight: .heavy))
-                        .foregroundColor(.yellow)
-                        .shadow(color: .yellow.opacity(0.8), radius: 20)
-                        .scaleEffect(levelUpScale)
-
-                    Spacer()
+            if let level = levelUpOverlayLevel {
+                LevelUpOverlay(level: level) {
+                    levelUpOverlayLevel = nil
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black.opacity(0.4))
-                .ignoresSafeArea()
-                .transition(.opacity)
                 .zIndex(999)
             }
         }
-        .onChange(of: userStatusVM.didLevelUp) { _, value in
-            if value {
-                triggerLevelUpAnimation()
-            }
+        .onReceive(userStatusVM.$levelUpEvent) { newLevel in
+            guard let level = newLevel else { return }
+            levelUpOverlayLevel = level
+            userStatusVM.levelUpEvent = nil
         }
-        .animation(.spring(response: 0.45, dampingFraction: 0.82), value: toastCenter.current?.id)
+        .animation(.spring(response: 0.55, dampingFraction: 0.78), value: toastCenter.current?.id)
     }
 }

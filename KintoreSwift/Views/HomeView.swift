@@ -7,6 +7,7 @@ struct HomeView: View {
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
     @State private var selectedBodyPart = "胸"
     @State private var selectedExercise = ""
+    @State private var showAddExerciseSheet = false
 
     private let bodyPartOrder = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
     private var homeMetrics: ContentViewModel.HomeMetrics { viewModel.homeMetrics }
@@ -77,6 +78,14 @@ struct HomeView: View {
                             .foregroundColor(.white.opacity(0.72))
 
                         Menu {
+                            Button {
+                                showAddExerciseSheet = true
+                            } label: {
+                                Label("種目を追加", systemImage: "plus")
+                            }
+
+                            Divider()
+
                             ForEach(bodyPartOrder, id: \.self) { part in
                                 let exercises = viewModel.exercises[part] ?? []
                                 if !exercises.isEmpty {
@@ -183,6 +192,65 @@ struct HomeView: View {
             }
             .onChange(of: selectedBodyPart) { _, _ in
                 normalizeSelection()
+            }
+            .sheet(isPresented: $showAddExerciseSheet, onDismiss: {
+                viewModel.loadInitialData()
+                normalizeSelection()
+            }) {
+                HomeAddExerciseView(
+                    initialBodyPart: selectedBodyPart,
+                    bodyPartOrder: bodyPartOrder
+                ) { bodyPart, name in
+                    viewModel.addNewExercise(name: name, bodyPart: bodyPart)
+                    selectedBodyPart = bodyPart
+                    selectedExercise = name
+                }
+            }
+        }
+    }
+}
+
+private struct HomeAddExerciseView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let initialBodyPart: String
+    let bodyPartOrder: [String]
+    let onAdd: (String, String) -> Void
+
+    @State private var bodyPart: String = ""
+    @State private var exerciseName: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Picker("部位", selection: $bodyPart) {
+                    ForEach(bodyPartOrder, id: \.self) { part in
+                        Text(part).tag(part)
+                    }
+                }
+
+                TextField("種目名", text: $exerciseName)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+            }
+            .navigationTitle("種目を追加")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("追加") {
+                        let trimmed = exerciseName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+                        onAdd(bodyPart, trimmed)
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                bodyPart = bodyPartOrder.contains(initialBodyPart) ? initialBodyPart : (bodyPartOrder.first ?? "胸")
             }
         }
     }

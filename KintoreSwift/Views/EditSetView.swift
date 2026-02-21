@@ -47,7 +47,7 @@ struct EditSetView: View {
         }
         .onAppear {
             // 既存データを State にコピー
-            weight = String(Int(entry.weight))
+            weight = weightText(entry.weight)
             reps = String(entry.reps)
             side = entry.side ?? ""
             note = entry.note ?? ""
@@ -67,5 +67,13 @@ struct EditSetView: View {
         )
         onSave(updated)
         dismiss()
+    }
+
+    private func weightText(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(format: "%.0f", value)
+        } else {
+            return String(format: "%.1f", value)
+        }
     }
 }

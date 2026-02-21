@@ -6,6 +6,7 @@ final class UserStatusViewModel: ObservableObject {
     @Published var currentXP: Int
     @Published var lastGainedXP: Int = 0
     @Published var didLevelUp: Bool = false
+    @Published var levelUpEvent: Int?
 
     // 種目ごとの基準値（将来の永続化対象）
     @Published private(set) var baselines: [String: Double]

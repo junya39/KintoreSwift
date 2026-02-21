@@ -48,7 +48,7 @@ final class XPToastCenter: ObservableObject {
         current = queue.removeFirst()
 
         Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            try? await Task.sleep(nanoseconds: 2_800_000_000)
             current = nil
             isShowing = false
             showNextIfNeeded()

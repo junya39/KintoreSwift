@@ -46,7 +46,7 @@ struct ExerciseHistoryCard: View {
                     // 重量 × 回数
                     Text(set.weight == 0
                          ? "自重 × \(set.reps)回"
-                         : "\(Int(set.weight))kg × \(set.reps)回"
+                         : "\(weightText(set.weight))kg × \(set.reps)回"
                     )
                     .foregroundColor(.white.opacity(0.9))
 
@@ -69,5 +69,13 @@ struct ExerciseHistoryCard: View {
         .background(Color.card)
         .cornerRadius(16)
         .padding(.horizontal, 16)
+    }
+
+    private func weightText(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(format: "%.0f", value)
+        } else {
+            return String(format: "%.1f", value)
+        }
     }
 }

@@ -142,7 +142,7 @@ struct ExerciseDetailView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     if stats.maxWeight > 0 {
                         Text("平均重量: \(String(format: "%.1f", stats.avgWeight)) kg")
-                        Text("最大重量: \(Int(stats.maxWeight)) kg")
+                        Text("最大重量: \(weightText(stats.maxWeight)) kg")
                     }
 
                     Text("総レップ数: \(stats.totalReps)")
@@ -250,7 +250,7 @@ struct ExerciseDetailView: View {
                         .font(.body)
                         .foregroundColor(.white)
                 } else {
-                    Text("\(Int(entry.weight)) kg × \(entry.reps) 回")
+                    Text("\(weightText(entry.weight)) kg × \(entry.reps) 回")
                         .font(.body)
                         .foregroundColor(.white)
                 }
@@ -339,5 +339,13 @@ struct ExerciseDetailView: View {
             bodyweightTotalReps,
             bodyweight.count
         )
+    }
+
+    private func weightText(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(format: "%.0f", value)
+        } else {
+            return String(format: "%.1f", value)
+        }
     }
 }
