@@ -18,7 +18,7 @@
 
 ## 📱 スクリーンショット
 
-| ホーム | 履歴 | グラフ |
+| ホーム | ワークアウト | 履歴（グラフ） |
 |--------|------|--------|
 | ![Home](screenshots/home.png) | ![History](screenshots/history.png) | ![Chart](screenshots/chart.png) |
 
