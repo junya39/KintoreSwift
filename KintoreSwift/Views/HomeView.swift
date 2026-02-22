@@ -5,20 +5,22 @@ import SwiftUI
 struct HomeView: View {
     @StateObject private var viewModel = ContentViewModel()
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
+    @State private var selectedDate = Date()
+    @State private var showDayHistory = false
     @State private var selectedBodyPart = "胸"
     @State private var selectedExercise = ""
     @State private var showAddExerciseSheet = false
 
     private let bodyPartOrder = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
+    private static let homeDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "M月d日（E）"
+        return formatter
+    }()
     private var homeMetrics: ContentViewModel.HomeMetrics { viewModel.homeMetrics }
     private var todayText: String {
-        Date.now.formatted(
-            .dateTime
-                .year()
-                .month(.wide)
-                .day()
-                .locale(Locale(identifier: "ja_JP"))
-        )
+        Self.homeDateFormatter.string(from: Date())
     }
 
     private var selectedExerciseVolumeText: String {
@@ -49,10 +51,19 @@ struct HomeView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .foregroundColor(.white)
 
-                    Text("今日: \(todayText)")
-                        .font(.title3.weight(.bold))
-                        .foregroundColor(.white.opacity(0.9))
+                    Text(todayText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.72))
+                        .padding(.top, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    CalendarSection(
+                        selectedDate: $selectedDate,
+                        entries: viewModel.entries,
+                        onDateTap: {
+                            showDayHistory = true
+                        }
+                    )
 
                     // レベルカード（仮）
                     VStack(alignment: .leading, spacing: 8) {
@@ -186,6 +197,10 @@ struct HomeView: View {
                 .padding()
             }
             .background(Color.black) // ← ★ここが正解位置
+            .navigationDestination(isPresented: $showDayHistory) {
+                HistoryView(selectedDate: selectedDate)
+                    .environmentObject(viewModel)
+            }
             .onAppear {
                 viewModel.loadInitialData()
                 normalizeSelection()
@@ -206,6 +221,25 @@ struct HomeView: View {
                     selectedExercise = name
                 }
             }
+        }
+    }
+}
+
+private struct CalendarSection: View {
+    @Binding var selectedDate: Date
+    let entries: [SetEntry]
+    let onDateTap: () -> Void
+
+    var body: some View {
+        CalendarView(
+            selectedDate: $selectedDate,
+            markedDates: entries.map { $0.date }
+        )
+        .frame(height: 220)
+        .background(Color.card)
+        .cornerRadius(16)
+        .onChange(of: selectedDate) { _, _ in
+            onDateTap()
         }
     }
 }

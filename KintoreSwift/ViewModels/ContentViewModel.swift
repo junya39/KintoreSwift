@@ -4,6 +4,12 @@ import SwiftUI
 import Foundation
 
 final class ContentViewModel: ObservableObject {
+    enum PostSaveSideAction {
+        case switchToLeft
+        case switchToRight
+        case none
+    }
+
     struct HomeMetrics {
         let totalVolume: Int
         let streakDays: Int
@@ -17,6 +23,7 @@ final class ContentViewModel: ObservableObject {
     @Published var diffColor: Color = .secondary
     @Published var chartGrouping: GroupingType = .day
     @Published private(set) var deletedExerciseNames: Set<String> = []
+    private var pendingRightExercise: String?
     func loadInitialData() {
         DatabaseManager.shared.createExerciseTableIfNeeded()
         DatabaseManager.shared.createDeletedExerciseTableIfNeeded()
@@ -47,14 +54,49 @@ final class ContentViewModel: ObservableObject {
             side: side
         )
 
-        // 保存完了後に、今回セットのボリューム分XPを加算
-        let totalVolume = max(0, weight) * Double(reps)
-        userStatusVM?.addXP(volume: totalVolume, exerciseId: exercise)
+        if shouldGrantXP(for: side, exercise: exercise) {
+            // 保存完了後に、今回セットのボリューム分XPを加算
+            let totalVolume = max(0, weight) * Double(reps)
+            userStatusVM?.addXP(volume: totalVolume, exerciseId: exercise)
+        }
 
         reloadAfterChange(
             selectedDate: date,
             selectedExercise: exercise
         )
+    }
+
+    private func shouldGrantXP(for side: String, exercise: String) -> Bool {
+        let normalizedSide = side.uppercased()
+
+        // sideが指定されていない通常種目は従来どおり毎回XPを加算
+        guard normalizedSide == "R" || normalizedSide == "L" else {
+            pendingRightExercise = nil
+            return true
+        }
+
+        if normalizedSide == "R" {
+            pendingRightExercise = exercise
+            return false
+        }
+
+        if normalizedSide == "L", pendingRightExercise == exercise {
+            pendingRightExercise = nil
+            return true
+        }
+
+        return false
+    }
+
+    func postSaveSideAction(for currentSide: String) -> PostSaveSideAction {
+        switch currentSide {
+        case "R":
+            return .switchToLeft
+        case "L":
+            return .switchToRight
+        default:
+            return .none
+        }
     }
 
     func deleteSet(
@@ -111,6 +153,12 @@ final class ContentViewModel: ObservableObject {
         dailyEntries = entries.filter { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }
     }
 
+    func getEntries(for date: Date) -> [SetEntry] {
+        entries
+            .filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
+            .sorted { $0.id < $1.id }
+    }
+
     func updateLastDiff(for selectedExercise: String) {
         let recs = DatabaseManager.shared.fetchLastTwoRecords(for: selectedExercise)
         guard recs.count == 2 else {
@@ -139,18 +187,24 @@ final class ContentViewModel: ObservableObject {
         exercises = DatabaseManager.shared.fetchExercisesByBodyPart()
     }
     
-    func lastSetText(for exercise: String) -> String? {
-        let items = entries
-            .filter { $0.exercise == exercise }
-            .sorted { $0.date > $1.date }
+    func getLastSet(for exerciseId: String) -> String {
+        guard !exerciseId.isEmpty else { return "前セットなし" }
+        let last = entries
+            .filter { $0.exercise == exerciseId }
+            .max(by: { $0.date < $1.date })
 
-        guard let last = items.first else { return nil }
+        guard let last else { return "前セットなし" }
 
-        if last.weight > 0 {
-            return "\(Int(last.weight))kg × \(last.reps)回"
-        } else {
-            return "\(last.reps)回"
+        let weightText = last.weight > 0 ? "\(Int(last.weight))kg" : "自重"
+        if let side = last.side, !side.isEmpty {
+            return "\(weightText) × \(last.reps)回（\(side)）"
         }
+        return "\(weightText) × \(last.reps)回"
+    }
+
+    func lastSetText(for exercise: String) -> String? {
+        let text = getLastSet(for: exercise)
+        return text == "前セットなし" ? nil : text
     }
 
     var homeMetrics: HomeMetrics {

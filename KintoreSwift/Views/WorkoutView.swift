@@ -11,7 +11,13 @@ private enum WorkoutSheet: String, Identifiable {
     var id: String { rawValue }
 }
 
+private enum WorkoutInputField: Hashable {
+    case reps
+}
+
 struct WorkoutView: View {
+    private let xpHighlightDuration: TimeInterval = 2.8
+
     private let initialSelectedBodyPart: String?
     private let initialSelectedExercise: String?
     private let showInputOnAppear: Bool
@@ -34,6 +40,7 @@ struct WorkoutView: View {
     @State private var isEditingTimer = false
     @State private var tempMinute = 2
     @State private var tempSecond = 0
+    @FocusState private var focusedInputField: WorkoutInputField?
 
     @StateObject private var viewModel = ContentViewModel()
     @StateObject private var timerVM = IntervalTimerViewModel()
@@ -125,39 +132,12 @@ struct WorkoutView: View {
 
                     HeaderSection()
 
-                    CalendarSection(
-                        selectedDate: $selectedDate,
-                        entries: filteredEntries
-                    )
-
-                    BodyPartSection(
-                        selectedBodyPart: $selectedBodyPart,
-                        bodyParts: bodyParts,
-                        onSelectBodyPart: { part in
-                            selectedBodyPart = part
-                            isExerciseFilterEnabled = false
-                            selectedExercise = exercises(for: part).first ?? ""
-                        }
-                    )
-
-                    ExercisePickerSection(
-                        selectedExercise: $selectedExercise,
-                        exercises: displayedExercises,
-                        onAdd: { activeSheet = .addExercise },
-                        onDeleteExercise: { exercise in
-                            requestExerciseDeletion(exercise)
-                        },
-                        onSelectExercise: {
-                            isExerciseFilterEnabled = true
-                            guard activeSheet != .addExercise else { return }
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                activeSheet = .input
-                            }
-                        }
-                    )
-
-                    IntervalTimerSection(
+                    TrainingDashboardSection(
                         remainingSeconds: timerVM.remainingSeconds,
+                        currentXP: userStatusVM.currentXP,
+                        requiredXP: userStatusVM.requiredXP(for: userStatusVM.level),
+                        xpProgress: userStatusVM.getProgress(),
+                        lastSetText: viewModel.getLastSet(for: selectedExercise),
                         isRunning: timerVM.isRunning,
                         isEditingTimer: $isEditingTimer,
                         tempMinute: $tempMinute,
@@ -189,6 +169,32 @@ struct WorkoutView: View {
                         },
                         onResetTap: {
                             timerVM.reset()
+                        }
+                    )
+
+                    BodyPartSection(
+                        selectedBodyPart: $selectedBodyPart,
+                        bodyParts: bodyParts,
+                        onSelectBodyPart: { part in
+                            selectedBodyPart = part
+                            isExerciseFilterEnabled = false
+                            selectedExercise = exercises(for: part).first ?? ""
+                        }
+                    )
+
+                    ExercisePickerSection(
+                        selectedExercise: $selectedExercise,
+                        exercises: displayedExercises,
+                        onAdd: { activeSheet = .addExercise },
+                        onDeleteExercise: { exercise in
+                            requestExerciseDeletion(exercise)
+                        },
+                        onSelectExercise: {
+                            isExerciseFilterEnabled = true
+                            guard activeSheet != .addExercise else { return }
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                activeSheet = .input
+                            }
                         }
                     )
 
@@ -302,6 +308,7 @@ struct WorkoutView: View {
                         weightText: $weightText,
                         repsText: $repsText,
                         note: $note,
+                        focusedField: $focusedInputField,
                         onTapExercise: {
                             openExerciseDetailFromInputForm()
                         },
@@ -342,6 +349,7 @@ struct WorkoutView: View {
     private func addSet() {
         guard let reps = Int(repsText), !selectedExercise.isEmpty else { return }
 
+        let currentSide = selectedSide
         let weight = isBodyweight ? 0 : (Double(weightText) ?? 0)
 
         viewModel.addSet(
@@ -355,20 +363,46 @@ struct WorkoutView: View {
             userStatusVM: userStatusVM
         )
 
+        let postSaveSideAction = viewModel.postSaveSideAction(for: currentSide)
+
         let gainedXP = userStatusVM.lastGainedXP
         if gainedXP > 0 {
             XPToastCenter.shared.show(xp: gainedXP)
             userStatusVM.lastGainedXP = 0
         }
 
-        weightText = ""
-        repsText = ""
-        note = ""
-        selectedSide = ""
-        isBodyweight = false
+        if postSaveSideAction != .none {
+            let delay = gainedXP > 0 ? xpHighlightDuration : 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                applySideTransition(postSaveSideAction)
+            }
+        } else {
+            weightText = ""
+            repsText = ""
+            note = ""
+            selectedSide = ""
+            isBodyweight = false
+        }
 
         timerVM.reset()
         timerVM.start()
+    }
+
+    private func applySideTransition(_ action: ContentViewModel.PostSaveSideAction) {
+        switch action {
+        case .switchToLeft:
+            selectedSide = "L"
+        case .switchToRight:
+            selectedSide = "R"
+        case .none:
+            return
+        }
+
+        repsText = ""
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        DispatchQueue.main.async {
+            focusedInputField = .reps
+        }
     }
 
     private func addNewExercise() {
@@ -458,19 +492,128 @@ private struct TodaySummarySection: View {
     }
 }
 
-private struct CalendarSection: View {
-    @Binding var selectedDate: Date
-    let entries: [SetEntry]
+private struct TrainingDashboardSection: View {
+    let remainingSeconds: Int
+    let currentXP: Int
+    let requiredXP: Int
+    let xpProgress: Double
+    let lastSetText: String
+    let isRunning: Bool
+    @Binding var isEditingTimer: Bool
+    @Binding var tempMinute: Int
+    @Binding var tempSecond: Int
+    let onTimeTap: () -> Void
+    let onDoneTap: () -> Void
+    let onPrimaryTap: () -> Void
+    let onResetTap: () -> Void
+
+    private var timerText: String {
+        let minutes = remainingSeconds / 60
+        let seconds = remainingSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
 
     var body: some View {
-        CalendarView(
-            selectedDate: $selectedDate,
-            markedDates: entries.map { $0.date }
-        )
-        .frame(height: 220)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("タイマー")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.65))
+                Spacer()
+                Text(timerText)
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .monospacedDigit()
+                    .onTapGesture(perform: onTimeTap)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("XP")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.65))
+                    Spacer()
+                    Text("\(currentXP) / \(requiredXP)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.9))
+                }
+                ProgressView(value: xpProgress)
+                    .tint(.green)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("前セット")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.65))
+                Text(lastSetText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
+            }
+
+            HStack {
+                Spacer()
+
+                if !isEditingTimer {
+                    Button(action: onPrimaryTap) {
+                        Text(isRunning ? "停止" : "開始")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color.accent)
+                            .clipShape(Capsule())
+                    }
+
+                    Button(action: onResetTap) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.12))
+                            .clipShape(Circle())
+                    }
+                }
+            }
+
+            if isEditingTimer {
+                VStack(spacing: 8) {
+                    HStack(spacing: 0) {
+                        Picker("", selection: $tempMinute) {
+                            ForEach(0...60, id: \.self) { value in
+                                Text("\(value)分").tag(value)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(maxWidth: .infinity)
+
+                        Picker("", selection: $tempSecond) {
+                            ForEach(0..<60, id: \.self) { value in
+                                Text("\(value)秒").tag(value)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .frame(height: 200)
+
+                    Button("完了") {
+                        onDoneTap()
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.accent)
+                    .clipShape(Capsule())
+                }
+                .transition(.move(edge: .bottom))
+            }
+        }
+        .padding()
         .background(Color.card)
         .cornerRadius(16)
         .padding(.horizontal, 16)
+        .animation(.easeInOut(duration: 0.2), value: isEditingTimer)
     }
 }
 
@@ -571,36 +714,17 @@ private struct ExercisePickerSection: View {
 }
 
 private struct IntervalTimerSection: View {
-    let remainingSeconds: Int
     let isRunning: Bool
     @Binding var isEditingTimer: Bool
     @Binding var tempMinute: Int
     @Binding var tempSecond: Int
-    let onTimeTap: () -> Void
     let onDoneTap: () -> Void
     let onPrimaryTap: () -> Void
     let onResetTap: () -> Void
 
-    private var timeText: String {
-        let minutes = remainingSeconds / 60
-        let seconds = remainingSeconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("タイマー")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.white.opacity(0.65))
-                    Text(timeText)
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .monospacedDigit()
-                        .onTapGesture(perform: onTimeTap)
-                }
-
+            HStack {
                 Spacer()
 
                 if !isEditingTimer {
@@ -752,6 +876,7 @@ private struct InputFormSection: View {
     @Binding var weightText: String
     @Binding var repsText: String
     @Binding var note: String
+    @FocusState.Binding var focusedField: WorkoutInputField?
     let onTapExercise: () -> Void
     let onAdd: () -> Void
 
@@ -853,6 +978,7 @@ private struct InputFormSection: View {
 
                         TextField("回数", text: $repsText)
                             .keyboardType(.numberPad)
+                            .focused($focusedField, equals: .reps)
                             .padding(.vertical, 14)
                             .padding(.horizontal, 14)
                             .background(Color.card)

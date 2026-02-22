@@ -90,14 +90,14 @@ struct LevelUpOverlay: View {
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             withAnimation(.easeOut(duration: 0.25)) {
                 contentOpacity = 0.0
                 backgroundOpacity = 0.0
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.35) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.25) {
             onComplete()
         }
     }
