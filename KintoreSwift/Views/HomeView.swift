@@ -310,7 +310,7 @@ private struct CharacterHeaderView: View {
                 .font(.caption.weight(.semibold))
             Text("Lv \(level)")
                 .font(.caption2.weight(.semibold))
-            Text("POWER \(power)")
+            Text("POW \(power)")
                 .font(.caption2.weight(.semibold))
             Text("END \(endurance)")
                 .font(.caption2.weight(.semibold))

@@ -5,6 +5,8 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @EnvironmentObject private var userStatusVM: UserStatusViewModel
+
     var body: some View {
         TabView {
             HomeView()
@@ -19,7 +21,9 @@ struct MainTabView: View {
                     Text("Workout")
                 }
 
-            LevelView()
+            LevelView(
+                viewModel: LevelViewModel(userStatus: userStatusVM)
+            )
                 .tabItem {
                     Image(systemName: "chart.bar")
                     Text("Level")
