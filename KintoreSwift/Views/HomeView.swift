@@ -7,6 +7,8 @@ struct HomeView: View {
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
     @State private var selectedDate = Date()
     @State private var showDayHistory = false
+    @State private var debugOverrideEnabled: Bool = false
+    @State private var debugLevel: Int = 1
     @State private var selectedBodyPart = "胸"
     @State private var selectedExercise = ""
     @State private var showAddExerciseSheet = false
@@ -39,11 +41,23 @@ struct HomeView: View {
         }
     }
 
+    private var displayLevel: Int {
+        debugOverrideEnabled ? debugLevel : userStatusVM.level
+    }
+
+    private var isEventLogActive: Bool {
+        switch viewModel.currentLogEvent {
+        case .normalLog:
+            return false
+        default:
+            return true
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-
                     // タイトル
                     Text("KintoreSwift")
                         .font(.largeTitle)
@@ -57,6 +71,34 @@ struct HomeView: View {
                         .padding(.top, 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
+                    CharacterHeaderView(
+                        level: displayLevel,
+                        progress: userStatusVM.getProgress(),
+                        currentXP: userStatusVM.currentXP,
+                        requiredXP: userStatusVM.requiredXP(for: userStatusVM.level),
+                        power: userStatusVM.power,
+                        endurance: userStatusVM.endurance
+                    )
+
+                    Text(viewModel.currentLogMessage)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: 260, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(isEventLogActive ? 0.95 : 1.0))
+                        .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
+                        .multilineTextAlignment(.leading)
+                        .padding(.vertical, 4)
+
+                    #if DEBUG
+                    DebugEvolutionPanelView(
+                        enabled: $debugOverrideEnabled,
+                        debugLevel: $debugLevel,
+                        displayLevel: displayLevel
+                    )
+                    #endif
+
                     CalendarSection(
                         selectedDate: $selectedDate,
                         entries: viewModel.entries,
@@ -64,23 +106,6 @@ struct HomeView: View {
                             showDayHistory = true
                         }
                     )
-
-                    // レベルカード（仮）
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("レベル \(userStatusVM.level)")
-                            .font(.headline)
-                            .foregroundColor(.white)
-
-                        ProgressView(value: userStatusVM.getProgress())
-                            .tint(.green)
-
-                        Text("\(userStatusVM.currentXP.formatted()) / \(userStatusVM.requiredXP(for: userStatusVM.level).formatted()) XP")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    .padding()
-                    .background(Color(.systemGray6).opacity(0.15))
-                    .cornerRadius(14)
 
                     // 今日のワークアウト
                     VStack(alignment: .leading, spacing: 8) {
@@ -95,23 +120,23 @@ struct HomeView: View {
                                 Label("種目を追加", systemImage: "plus")
                             }
 
-                            Divider()
+                                Divider()
 
-                            ForEach(bodyPartOrder, id: \.self) { part in
-                                let exercises = viewModel.exercises[part] ?? []
-                                if !exercises.isEmpty {
-                                    Section(part) {
-                                        ForEach(exercises, id: \.self) { exercise in
-                                            Button {
-                                                selectedBodyPart = part
-                                                selectedExercise = exercise
-                                            } label: {
-                                                Text(exercise)
+                                ForEach(bodyPartOrder, id: \.self) { part in
+                                    let exercises = viewModel.exercises[part] ?? []
+                                    if !exercises.isEmpty {
+                                        Section(part) {
+                                            ForEach(exercises, id: \.self) { exercise in
+                                                Button {
+                                                    selectedBodyPart = part
+                                                    selectedExercise = exercise
+                                                } label: {
+                                                    Text(exercise)
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
                         } label: {
                             HStack {
                                 Text(selectedBodyPart)
@@ -122,16 +147,16 @@ struct HomeView: View {
                                     .background(Color.green.opacity(0.15))
                                     .clipShape(Capsule())
 
-                                Text(selectedExercise.isEmpty ? "種目を選択" : selectedExercise)
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
+                                    Text(selectedExercise.isEmpty ? "種目を選択" : selectedExercise)
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
 
-                                Spacer()
+                                    Spacer()
 
-                                Image(systemName: "chevron.down")
-                                    .font(.caption.bold())
-                                    .foregroundColor(.white.opacity(0.85))
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.white.opacity(0.85))
                             }
                         }
 
@@ -168,27 +193,27 @@ struct HomeView: View {
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.72))
 
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text("総重量")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.78))
-                                Text("\(homeMetrics.totalVolume.formatted()) kg")
-                                    .bold()
-                                    .foregroundColor(.white)
-                            }
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text("総重量")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.78))
+                                    Text("\(homeMetrics.totalVolume.formatted()) kg")
+                                        .bold()
+                                        .foregroundColor(.white)
+                                }
 
-                            Spacer()
+                                Spacer()
 
-                            VStack(alignment: .leading) {
-                                Text("連続")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.78))
-                                Text("\(homeMetrics.streakDays)日")
-                                    .bold()
-                                    .foregroundColor(.white)
+                                VStack(alignment: .leading) {
+                                    Text("連続")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.78))
+                                    Text("\(homeMetrics.streakDays)日")
+                                        .bold()
+                                        .foregroundColor(.white)
+                                }
                             }
-                        }
                     }
                     .padding()
                     .background(Color.white.opacity(0.08))
@@ -225,6 +250,32 @@ struct HomeView: View {
     }
 }
 
+private struct EvolutionStage {
+    let name: String
+    let assetName: String
+
+    static func from(level: Int) -> EvolutionStage {
+        switch level {
+        case 1...4:
+            return EvolutionStage(name: "がりがり", assetName: "char_garigari")
+        case 5...9:
+            return EvolutionStage(name: "ほそ", assetName: "char_hoso")
+        case 10...14:
+            return EvolutionStage(name: "ふつう", assetName: "char_futsuu")
+        case 15...19:
+            return EvolutionStage(name: "ほそまっちょ", assetName: "char_hosomacho")
+        case 20...29:
+            return EvolutionStage(name: "まっちょ", assetName: "char_macho")
+        case 30...39:
+            return EvolutionStage(name: "ごりまっちょ", assetName: "char_gorimacho")
+        case 40...99:
+            return EvolutionStage(name: "ごりらっちょ", assetName: "char_goriracho")
+        default:
+            return EvolutionStage(name: "れじぇんど", assetName: "char_legend")
+        }
+    }
+}
+
 private struct CalendarSection: View {
     @Binding var selectedDate: Date
     let entries: [SetEntry]
@@ -243,6 +294,150 @@ private struct CalendarSection: View {
         }
     }
 }
+
+private struct CharacterHeaderView: View {
+    let level: Int
+    let progress: Double
+    let currentXP: Int
+    let requiredXP: Int
+    let power: Int
+    let endurance: Int
+
+    private var stage: EvolutionStage { EvolutionStage.from(level: level) }
+    private var statusBoxView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(stage.name)
+                .font(.caption.weight(.semibold))
+            Text("Lv \(level)")
+                .font(.caption2.weight(.semibold))
+            Text("POWER \(power)")
+                .font(.caption2.weight(.semibold))
+            Text("END \(endurance)")
+                .font(.caption2.weight(.semibold))
+
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.2))
+                    .frame(height: 3)
+
+                ProgressView(value: progress)
+                    .tint(.green)
+                    .frame(height: 3)
+            }
+            .frame(maxWidth: 95, alignment: .leading)
+
+            Text("XP \(currentXP.formatted()) / \(requiredXP.formatted())")
+                .font(.caption2)
+                .monospacedDigit()
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 6)
+        .background(Color.black.opacity(0.9))
+        .overlay(
+            Rectangle().stroke(Color.white, lineWidth: 2)
+        )
+    }
+
+    var body: some View {
+        Button {
+            // TODO: キャラ詳細画面へ遷移
+        } label: {
+            ZStack {
+                Color.black
+
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(stage.assetName)
+                        .resizable()
+                        .interpolation(.none)
+                        .antialiased(false)
+                        .frame(width: 256, height: 256)
+                    Spacer()
+                }
+
+                VStack {
+                    HStack {
+                        statusBoxView
+                            .frame(width: 120)
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .padding(.top, 16)
+                .padding(.leading, 16)
+            }
+            .frame(maxWidth: .infinity, minHeight: 320)
+            .padding(.top, 4)
+            .padding(.bottom, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+#if DEBUG
+private struct DebugEvolutionPanelView: View {
+    @Binding var enabled: Bool
+    @Binding var debugLevel: Int
+    let displayLevel: Int
+
+    private let presets: [(name: String, level: Int)] = [
+        ("がりがり", 1),
+        ("ほそ", 5),
+        ("ふつう", 10),
+        ("ほそまっちょ", 15),
+        ("まっちょ", 20),
+        ("ごりまっちょ", 30),
+        ("ごりらっちょ", 40),
+        ("れじぇんど", 100)
+    ]
+
+    private var stage: EvolutionStage {
+        EvolutionStage.from(level: displayLevel)
+    }
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("DEBUG: 手動レベル", isOn: $enabled)
+                .foregroundColor(.white)
+
+            Stepper(value: $debugLevel, in: 1...120) {
+                Text("DEBUG Level: \(debugLevel)")
+                    .foregroundColor(.white.opacity(enabled ? 0.95 : 0.5))
+            }
+            .disabled(!enabled)
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(presets, id: \.name) { preset in
+                    Button(preset.name) {
+                        debugLevel = preset.level
+                        enabled = true
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+
+            Text("表示Lv: \(displayLevel) / 進化: \(stage.name) / asset: \(stage.assetName)")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.78))
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+#endif
 
 private struct HomeAddExerciseView: View {
     @Environment(\.dismiss) private var dismiss

@@ -4,6 +4,8 @@ import SwiftUI
 final class UserStatusViewModel: ObservableObject {
     @Published var level: Int
     @Published var currentXP: Int
+    @Published var power: Int = 0
+    @Published var endurance: Int = 0
     @Published var lastGainedXP: Int = 0
     @Published var didLevelUp: Bool = false
     @Published var levelUpEvent: Int?
@@ -30,7 +32,9 @@ final class UserStatusViewModel: ObservableObject {
         let baseline = baselines[exerciseId] ?? volume
         let growthRate = volume / baseline
         let multiplier = min(max(growthRate, 0.8), 1.2)
-        let gainedXP = Int(baseXP * multiplier)
+        let totalBonusMultiplier =
+            1 + (Double(power) * 0.01) + (Double(endurance) * 0.01)
+        let gainedXP = Int(baseXP * multiplier * totalBonusMultiplier)
 
         currentXP += gainedXP
         lastGainedXP = gainedXP
@@ -42,12 +46,15 @@ final class UserStatusViewModel: ObservableObject {
         while currentXP >= requiredXP(for: level) {
             currentXP -= requiredXP(for: level)
             level += 1
+            power += 2
+            endurance += 2
+            levelUpEvent = level
             didLevelUp = true
         }
     }
 
     func requiredXP(for level: Int) -> Int {
-        100 + level * 3
+        120 + Int(pow(Double(level), 1.8) * 8)
     }
 
     func getProgress() -> Double {

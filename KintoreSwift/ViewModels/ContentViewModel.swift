@@ -3,17 +3,41 @@
 import SwiftUI
 import Foundation
 
-final class ContentViewModel: ObservableObject {
+class ContentViewModel: ObservableObject {
     enum PostSaveSideAction {
         case switchToLeft
         case switchToRight
         case none
     }
 
+    enum LogEventType: Int {
+        case normalLog
+        case newWeightRecord
+        case newRepRecord
+        case perfectRecord
+        case levelUp
+    }
+
     struct HomeMetrics {
         let totalVolume: Int
         let streakDays: Int
     }
+
+    private struct ExerciseRecordSnapshot {
+        var lastWeight: Double
+        var lastReps: Int
+        var bestWeight: Double
+        var bestReps: Int
+    }
+
+    private enum LogSyncKeys {
+        static let notificationName = Notification.Name("ContentViewModel.LogDidChange")
+        static let message = "message"
+        static let eventRawValue = "eventRawValue"
+    }
+
+    private static var sharedLogMessage: String = "今日も鍛える準備はできている。"
+    private static var sharedLogEvent: LogEventType = .normalLog
 
     @Published var entries: [SetEntry] = []
     @Published var exercises: [String: [String]] = [:]
@@ -22,14 +46,57 @@ final class ContentViewModel: ObservableObject {
     @Published var diffText: String = ""
     @Published var diffColor: Color = .secondary
     @Published var chartGrouping: GroupingType = .day
+    @Published var currentLogMessage: String
+    @Published var currentLogEvent: LogEventType
     @Published private(set) var deletedExerciseNames: Set<String> = []
     private var pendingRightExercise: String?
+    private var exerciseRecordSnapshots: [String: ExerciseRecordSnapshot] = [:]
+    private var logResetToken = UUID()
+    private var logObserver: NSObjectProtocol?
+
+    init() {
+        currentLogMessage = Self.sharedLogMessage
+        currentLogEvent = Self.sharedLogEvent
+
+        logObserver = NotificationCenter.default.addObserver(
+            forName: LogSyncKeys.notificationName,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            guard
+                let userInfo = notification.userInfo,
+                let message = userInfo[LogSyncKeys.message] as? String,
+                let eventRawValue = userInfo[LogSyncKeys.eventRawValue] as? Int,
+                let event = LogEventType(rawValue: eventRawValue)
+            else {
+                return
+            }
+            self.currentLogMessage = message
+            self.currentLogEvent = event
+        }
+    }
+
+    deinit {
+        if let logObserver {
+            NotificationCenter.default.removeObserver(logObserver)
+        }
+    }
+
     func loadInitialData() {
         DatabaseManager.shared.createExerciseTableIfNeeded()
         DatabaseManager.shared.createDeletedExerciseTableIfNeeded()
         deletedExerciseNames = DatabaseManager.shared.fetchDeletedExerciseNames()
         exercises = DatabaseManager.shared.fetchExercisesByBodyPart()
         entries = DatabaseManager.shared.fetchAll()
+        rebuildExerciseRecordSnapshots()
+    }
+
+    func bodyPart(for exercise: String) -> String {
+        for (bodyPart, exerciseNames) in exercises where exerciseNames.contains(exercise) {
+            return bodyPart
+        }
+        return "ALL"
     }
     
     // MARK: - Write / Update Actions (View から呼ばれる入口)
@@ -44,6 +111,46 @@ final class ContentViewModel: ObservableObject {
         side: String,
         userStatusVM: UserStatusViewModel? = nil
     ) {
+        let previousSnapshot = exerciseRecordSnapshots[exercise]
+        let isWeightRecord: Bool
+        let isRepRecord: Bool
+        if let previousSnapshot {
+            isWeightRecord = weight > previousSnapshot.bestWeight
+            isRepRecord = reps > previousSnapshot.bestReps
+        } else {
+            isWeightRecord = weight > 0
+            isRepRecord = reps > 0
+        }
+
+        var eventType: LogEventType
+        if isWeightRecord && isRepRecord {
+            eventType = .perfectRecord
+        } else if isWeightRecord {
+            eventType = .newWeightRecord
+        } else if isRepRecord {
+            eventType = .newRepRecord
+        } else {
+            eventType = .normalLog
+        }
+
+        let levelBeforeXP = userStatusVM?.level ?? 1
+        let actorName = evolutionName(for: levelBeforeXP)
+        let weightText = weight > 0 ? "\(Int(weight))kg" : "自重"
+        let normalMessage = "\(actorName)は\(exercise)\(weightText)を\(reps)回上げた！"
+        var eventMessage: String
+        switch eventType {
+        case .perfectRecord:
+            eventMessage = "★★ 完全勝利！★★\n自己ベスト更新！！"
+        case .newWeightRecord:
+            eventMessage = "★ NEW RECORD ★\n\(actorName)は\(Int(weight))kgを持ち上げた！"
+        case .newRepRecord:
+            eventMessage = "限界突破！\n\(actorName)は\(reps)回達成！"
+        case .levelUp:
+            eventMessage = normalMessage
+        case .normalLog:
+            eventMessage = normalMessage
+        }
+
         DatabaseManager.shared.insert(
             date: date,
             bodyPart: bodyPart,
@@ -60,9 +167,22 @@ final class ContentViewModel: ObservableObject {
             userStatusVM?.addXP(volume: totalVolume, exerciseId: exercise)
         }
 
+        let levelAfterXP = userStatusVM?.level ?? levelBeforeXP
+        if levelAfterXP > levelBeforeXP {
+            let evolvedName = evolutionName(for: levelAfterXP)
+            eventType = .levelUp
+            eventMessage = "\(evolvedName)はレベルがLv\(levelAfterXP)になった！"
+        }
+
         reloadAfterChange(
             selectedDate: date,
             selectedExercise: exercise
+        )
+
+        publishLog(
+            eventType: eventType,
+            eventMessage: eventMessage,
+            fallbackMessage: normalMessage
         )
     }
 
@@ -144,6 +264,7 @@ final class ContentViewModel: ObservableObject {
         selectedExercise: String
     ) {
         entries = DatabaseManager.shared.fetchAll()
+        rebuildExerciseRecordSnapshots()
         updateDailyEntries(for: selectedDate)
         updateLastDiff(for: selectedExercise)
     }
@@ -243,6 +364,78 @@ final class ContentViewModel: ObservableObject {
         }
 
         return streak
+    }
+
+    private func rebuildExerciseRecordSnapshots() {
+        var snapshots: [String: ExerciseRecordSnapshot] = [:]
+        for entry in entries.sorted(by: { $0.date < $1.date }) {
+            var snapshot = snapshots[entry.exercise] ?? ExerciseRecordSnapshot(
+                lastWeight: entry.weight,
+                lastReps: entry.reps,
+                bestWeight: entry.weight,
+                bestReps: entry.reps
+            )
+            snapshot.lastWeight = entry.weight
+            snapshot.lastReps = entry.reps
+            snapshot.bestWeight = max(snapshot.bestWeight, entry.weight)
+            snapshot.bestReps = max(snapshot.bestReps, entry.reps)
+            snapshots[entry.exercise] = snapshot
+        }
+        exerciseRecordSnapshots = snapshots
+    }
+
+    private func publishLog(
+        eventType: LogEventType,
+        eventMessage: String,
+        fallbackMessage: String
+    ) {
+        let token = UUID()
+        logResetToken = token
+        syncLogState(message: eventMessage, event: eventType)
+
+        guard eventType != .normalLog else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            guard let self else { return }
+            guard self.logResetToken == token else { return }
+            self.syncLogState(message: fallbackMessage, event: .normalLog)
+        }
+    }
+
+    private func syncLogState(message: String, event: LogEventType) {
+        currentLogMessage = message
+        currentLogEvent = event
+        Self.sharedLogMessage = message
+        Self.sharedLogEvent = event
+        NotificationCenter.default.post(
+            name: LogSyncKeys.notificationName,
+            object: nil,
+            userInfo: [
+                LogSyncKeys.message: message,
+                LogSyncKeys.eventRawValue: event.rawValue
+            ]
+        )
+    }
+
+    private func evolutionName(for level: Int) -> String {
+        switch level {
+        case 1...4:
+            return "がりがり"
+        case 5...9:
+            return "ほそ"
+        case 10...14:
+            return "ふつう"
+        case 15...19:
+            return "ほそまっちょ"
+        case 20...29:
+            return "まっちょ"
+        case 30...39:
+            return "ごりまっちょ"
+        case 40...99:
+            return "ごりらっちょ"
+        default:
+            return "れじぇんど"
+        }
     }
 
 }

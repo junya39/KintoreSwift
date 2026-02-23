@@ -9,6 +9,7 @@ final class IntervalTimerViewModel: ObservableObject {
     @Published var duration: Int
 
     private var timer: AnyCancellable?
+    private var endDate: Date?
     private let timerNotificationId = "workout_timer"
 
     init(duration: Int = 120) {
@@ -18,20 +19,22 @@ final class IntervalTimerViewModel: ObservableObject {
 
     func start() {
         stop()
+        endDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
         isRunning = true
         scheduleTimerNotification(seconds: remainingSeconds)
         timer = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self else { return }
-                guard self.remainingSeconds > 0 else {
-                    self.stop()
+                guard let endDate = self.endDate else {
+                    self.stop(cancelNotification: false)
                     return
                 }
 
-                self.remainingSeconds -= 1
+                let remaining = max(0, Int(endDate.timeIntervalSinceNow))
+                self.remainingSeconds = remaining
 
-                if self.remainingSeconds == 0 {
+                if remaining == 0 {
                     self.stop(cancelNotification: false)
                     let generator = UINotificationFeedbackGenerator()
                     generator.prepare()
@@ -51,6 +54,7 @@ final class IntervalTimerViewModel: ObservableObject {
 
     func reset() {
         stop()
+        endDate = nil
         remainingSeconds = duration
     }
 

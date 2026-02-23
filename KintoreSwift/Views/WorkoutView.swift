@@ -42,7 +42,7 @@ struct WorkoutView: View {
     @State private var tempSecond = 0
     @FocusState private var focusedInputField: WorkoutInputField?
 
-    @StateObject private var viewModel = ContentViewModel()
+    @StateObject private var viewModel = WorkoutViewModel()
     @StateObject private var timerVM = IntervalTimerViewModel()
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
 
@@ -134,6 +134,7 @@ struct WorkoutView: View {
 
                     TrainingDashboardSection(
                         remainingSeconds: timerVM.remainingSeconds,
+                        currentLevel: viewModel.currentLevel,
                         currentXP: userStatusVM.currentXP,
                         requiredXP: userStatusVM.requiredXP(for: userStatusVM.level),
                         xpProgress: userStatusVM.getProgress(),
@@ -241,6 +242,7 @@ struct WorkoutView: View {
             }
             .onAppear {
                 viewModel.loadInitialData()
+                viewModel.currentLevel = userStatusVM.level
                 if let bodyPart = initialSelectedBodyPart, bodyPart == "ALL" || viewModel.exercises.keys.contains(bodyPart) {
                     selectedBodyPart = bodyPart
                 }
@@ -261,9 +263,6 @@ struct WorkoutView: View {
                     didSetInitialSheetState = true
                 }
             }
-            .onDisappear {
-                timerVM.stop()
-            }
             .alert("種目を削除", isPresented: $showDeleteExerciseAlert) {
                 Button("キャンセル", role: .cancel) {}
                 Button("削除", role: .destructive) {
@@ -279,6 +278,7 @@ struct WorkoutView: View {
                 showHistory = true
             }
             .onChange(of: userStatusVM.level) { oldLevel, newLevel in
+                viewModel.currentLevel = newLevel
                 guard newLevel > oldLevel else { return }
                 userStatusVM.levelUpEvent = newLevel
             }
@@ -351,10 +351,13 @@ struct WorkoutView: View {
 
         let currentSide = selectedSide
         let weight = isBodyweight ? 0 : (Double(weightText) ?? 0)
+        let actualBodyPart = selectedBodyPart == "ALL"
+            ? viewModel.bodyPart(for: selectedExercise)
+            : selectedBodyPart
 
         viewModel.addSet(
             date: selectedDate,
-            bodyPart: selectedBodyPart,
+            bodyPart: actualBodyPart,
             exercise: selectedExercise,
             weight: weight,
             reps: reps,
@@ -494,6 +497,7 @@ private struct TodaySummarySection: View {
 
 private struct TrainingDashboardSection: View {
     let remainingSeconds: Int
+    let currentLevel: Int
     let currentXP: Int
     let requiredXP: Int
     let xpProgress: Double
@@ -533,6 +537,9 @@ private struct TrainingDashboardSection: View {
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.65))
                     Spacer()
+                    Text("Lv \(currentLevel)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.accent)
                     Text("\(currentXP) / \(requiredXP)")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.white.opacity(0.9))
