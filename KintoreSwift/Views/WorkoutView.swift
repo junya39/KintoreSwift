@@ -587,18 +587,26 @@ private struct TrainingDashboardSection: View {
                     HStack(spacing: 0) {
                         Picker("", selection: $tempMinute) {
                             ForEach(0...60, id: \.self) { value in
-                                Text("\(value)分").tag(value)
+                                Text("\(value)分")
+                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                                    .tag(value)
                             }
                         }
                         .pickerStyle(.wheel)
+                        .colorScheme(.dark)
+                        .tint(.green)
                         .frame(maxWidth: .infinity)
 
                         Picker("", selection: $tempSecond) {
                             ForEach(0..<60, id: \.self) { value in
-                                Text("\(value)秒").tag(value)
+                                Text("\(value)秒")
+                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                                    .tag(value)
                             }
                         }
                         .pickerStyle(.wheel)
+                        .colorScheme(.dark)
+                        .tint(.green)
                         .frame(maxWidth: .infinity)
                     }
                     .frame(height: 200)
@@ -761,18 +769,26 @@ private struct IntervalTimerSection: View {
                     HStack(spacing: 0) {
                         Picker("", selection: $tempMinute) {
                             ForEach(0...60, id: \.self) { value in
-                                Text("\(value)分").tag(value)
+                                Text("\(value)分")
+                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                                    .tag(value)
                             }
                         }
                         .pickerStyle(.wheel)
+                        .colorScheme(.dark)
+                        .tint(.green)
                         .frame(maxWidth: .infinity)
 
                         Picker("", selection: $tempSecond) {
                             ForEach(0..<60, id: \.self) { value in
-                                Text("\(value)秒").tag(value)
+                                Text("\(value)秒")
+                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                                    .tag(value)
                             }
                         }
                         .pickerStyle(.wheel)
+                        .colorScheme(.dark)
+                        .tint(.green)
                         .frame(maxWidth: .infinity)
                     }
                     .frame(height: 200)
@@ -875,6 +891,7 @@ private struct InputFormSection: View {
     @ObservedObject private var toastCenter = XPToastCenter.shared
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
     @State private var levelUpOverlayLevel: Int?
+    @State private var titleUnlockOverlayTitle: Title?
 
     let selectedBodyPart: String
     let selectedExercise: String
@@ -1025,12 +1042,22 @@ private struct InputFormSection: View {
                     levelUpOverlayLevel = nil
                 }
                 .zIndex(999)
+            } else if let title = titleUnlockOverlayTitle {
+                LevelUpOverlay(title: title) {
+                    titleUnlockOverlayTitle = nil
+                }
+                .zIndex(998)
             }
         }
         .onReceive(userStatusVM.$levelUpEvent) { newLevel in
             guard let level = newLevel else { return }
             levelUpOverlayLevel = level
             userStatusVM.levelUpEvent = nil
+        }
+        .onReceive(userStatusVM.titleManager.$titleUnlockEvent) { unlockedTitle in
+            guard let unlockedTitle else { return }
+            titleUnlockOverlayTitle = unlockedTitle
+            userStatusVM.titleManager.titleUnlockEvent = nil
         }
         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: toastCenter.current?.id)
     }

@@ -164,7 +164,26 @@ class ContentViewModel: ObservableObject {
         if shouldGrantXP(for: side, exercise: exercise) {
             // 保存完了後に、今回セットのボリューム分XPを加算
             let totalVolume = max(0, weight) * Double(reps)
-            userStatusVM?.addXP(volume: totalVolume, exerciseId: exercise)
+            if let userStatusVM {
+                let xpType = xpType(for: bodyPart)
+                let baseXP = sqrt(totalVolume)
+                let adjustedBaseXP = userStatusVM.titleManager.applyBonus(
+                    baseXP: baseXP,
+                    type: xpType
+                )
+                let subXP = adjustedBaseXP * 0.3
+                userStatusVM.addXP(
+                    volume: totalVolume,
+                    exerciseId: exercise,
+                    baseXPOverride: adjustedBaseXP
+                )
+                applySubXP(
+                    subXP: subXP,
+                    weight: weight,
+                    reps: reps,
+                    userStatusVM: userStatusVM
+                )
+            }
         }
 
         let levelAfterXP = userStatusVM?.level ?? levelBeforeXP
@@ -206,6 +225,57 @@ class ContentViewModel: ObservableObject {
         }
 
         return false
+    }
+
+    private func xpType(for bodyPart: String) -> TitleEffectType {
+        switch bodyPart {
+        case "脚", "腹筋":
+            return .enduranceXP
+        default:
+            return .powerXP
+        }
+    }
+
+    private func applySubXP(
+        subXP: Double,
+        weight: Double,
+        reps: Int,
+        userStatusVM: UserStatusViewModel
+    ) {
+        guard subXP > 0 else { return }
+
+        let powerDelta: Double
+        let enduranceDelta: Double
+
+        if weight == 0 {
+            powerDelta = 0
+            enduranceDelta = subXP
+        } else if reps <= 8 {
+            powerDelta = subXP
+            enduranceDelta = 0
+        } else if reps >= 15 {
+            powerDelta = 0
+            enduranceDelta = subXP
+        } else {
+            powerDelta = subXP * 0.5
+            enduranceDelta = subXP * 0.5
+        }
+
+        let statCap = max(0, userStatusVM.level)
+        if powerDelta > 0 {
+            let nextPower = userStatusVM.power + Int(powerDelta.rounded())
+            userStatusVM.power = min(statCap, max(0, nextPower))
+        }
+        if enduranceDelta > 0 {
+            let nextEndurance = userStatusVM.endurance + Int(enduranceDelta.rounded())
+            userStatusVM.endurance = min(statCap, max(0, nextEndurance))
+        }
+
+        userStatusVM.titleManager.evaluateTitles(
+            powerLevel: userStatusVM.power,
+            enduranceLevel: userStatusVM.endurance,
+            totalLevel: userStatusVM.level
+        )
     }
 
     func postSaveSideAction(for currentSide: String) -> PostSaveSideAction {

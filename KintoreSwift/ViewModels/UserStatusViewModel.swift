@@ -9,6 +9,7 @@ final class UserStatusViewModel: ObservableObject {
     @Published var lastGainedXP: Int = 0
     @Published var didLevelUp: Bool = false
     @Published var levelUpEvent: Int?
+    @Published var titleManager = TitleManager()
 
     // 種目ごとの基準値（将来の永続化対象）
     @Published private(set) var baselines: [String: Double]
@@ -23,10 +24,10 @@ final class UserStatusViewModel: ObservableObject {
         self.baselines = baselines
     }
 
-    func addXP(volume: Double, exerciseId: String) {
+    func addXP(volume: Double, exerciseId: String, baseXPOverride: Double? = nil) {
         guard volume > 0, !exerciseId.isEmpty else { return }
 
-        let baseXP = sqrt(volume)
+        let baseXP = max(0, baseXPOverride ?? sqrt(volume))
 
         // baseline未登録時は初回volumeを採用
         let baseline = baselines[exerciseId] ?? volume
@@ -46,11 +47,15 @@ final class UserStatusViewModel: ObservableObject {
         while currentXP >= requiredXP(for: level) {
             currentXP -= requiredXP(for: level)
             level += 1
-            power += 2
-            endurance += 2
             levelUpEvent = level
             didLevelUp = true
         }
+
+        titleManager.evaluateTitles(
+            powerLevel: power,
+            enduranceLevel: endurance,
+            totalLevel: level
+        )
     }
 
     func requiredXP(for level: Int) -> Int {

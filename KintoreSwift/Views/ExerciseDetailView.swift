@@ -137,20 +137,19 @@ struct ExerciseDetailView: View {
     @ViewBuilder
     private var statsSection: some View {
         if !viewModel.history.isEmpty {
-            let stats = calculateStats(for: viewModel.history)
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    if stats.maxWeight > 0 {
-                        Text("平均重量: \(String(format: "%.1f", stats.avgWeight)) kg")
-                        Text("最大重量: \(weightText(stats.maxWeight)) kg")
+                    if viewModel.maxWeight > 0 {
+                        Text("平均重量: \(String(format: "%.1f", viewModel.averageWeight)) kg")
+                        Text("最大重量: \(weightText(viewModel.maxWeight)) kg")
                     }
 
-                    Text("総レップ数: \(stats.totalReps)")
+                    Text("総レップ数: \(viewModel.totalReps)")
 
-                    if stats.bodyweightSets > 0 {
+                    if viewModel.bodyweightSets > 0 {
                         Divider().padding(.vertical, 4)
-                        Text("チンニング最大回数: \(stats.bodyweightMaxReps) 回")
-                        Text("チンニング合計回数: \(stats.bodyweightTotalReps) 回")
+                        Text("チンニング最大回数: \(viewModel.bodyweightMaxReps) 回")
+                        Text("チンニング合計回数: \(viewModel.bodyweightTotalReps) 回")
                     }
                 }
                 .font(.subheadline)
@@ -303,42 +302,6 @@ struct ExerciseDetailView: View {
                 Label("削除", systemImage: "trash")
             }
         }
-    }
-
-    // ---------------------
-    // MARK: - Stats
-    // ---------------------
-    private func calculateStats(for entries: [SetEntry]) -> (
-        avgWeight: Double,
-        maxWeight: Double,
-        totalReps: Int,
-        bodyweightMaxReps: Int,
-        bodyweightTotalReps: Int,
-        bodyweightSets: Int
-    ) {
-
-        let weighted = entries.filter { $0.weight > 0 }
-        let bodyweight = entries.filter { $0.weight == 0 }
-
-        let avgWeight =
-            weighted.isEmpty
-            ? 0
-            : weighted.map { $0.weight }.reduce(0, +) / Double(weighted.count)
-
-        let maxWeight = weighted.map { $0.weight }.max() ?? 0
-        let totalReps = entries.map { $0.reps }.reduce(0, +)
-
-        let bodyweightMaxReps = bodyweight.map { $0.reps }.max() ?? 0
-        let bodyweightTotalReps = bodyweight.map { $0.reps }.reduce(0, +)
-
-        return (
-            avgWeight,
-            maxWeight,
-            totalReps,
-            bodyweightMaxReps,
-            bodyweightTotalReps,
-            bodyweight.count
-        )
     }
 
     private func weightText(_ value: Double) -> String {
