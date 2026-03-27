@@ -79,6 +79,7 @@ final class DatabaseManager {
 
         createExerciseTableIfNeeded()
         createDeletedExerciseTableIfNeeded()
+        createUserStatusTableIfNeeded()
     }
 
     /// 既存の sets テーブルに side カラムが無い場合は追加する
@@ -143,6 +144,111 @@ final class DatabaseManager {
         } else {
             print("✅ deleted_exercises テーブル確認完了")
         }
+    }
+
+    func createUserStatusTableIfNeeded() {
+        guard db != nil else { return }
+
+        let query = """
+        CREATE TABLE IF NOT EXISTS user_status (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            level INTEGER NOT NULL DEFAULT 1,
+            current_xp INTEGER NOT NULL DEFAULT 0,
+            power INTEGER NOT NULL DEFAULT 0,
+            endurance INTEGER NOT NULL DEFAULT 0,
+            baselines TEXT NOT NULL DEFAULT '{}'
+        );
+        """
+
+        if sqlite3_exec(db, query, nil, nil, nil) != SQLITE_OK {
+            print("❌ user_status テーブル作成失敗")
+            return
+        }
+
+        let seedQuery = """
+        INSERT OR IGNORE INTO user_status (id, level, current_xp, power, endurance, baselines)
+        VALUES (1, 1, 0, 0, 0, '{}');
+        """
+
+        if sqlite3_exec(db, seedQuery, nil, nil, nil) != SQLITE_OK {
+            print("❌ user_status 初期データ作成失敗")
+        } else {
+            print("✅ user_status テーブル確認完了")
+        }
+    }
+
+    func fetchUserStatus() -> (
+        level: Int,
+        currentXP: Int,
+        power: Int,
+        endurance: Int,
+        baselinesJSON: String
+    )? {
+        guard db != nil else { return nil }
+
+        let query = """
+        SELECT level, current_xp, power, endurance, baselines
+        FROM user_status
+        WHERE id = 1
+        LIMIT 1;
+        """
+        var stmt: OpaquePointer?
+
+        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else {
+            sqlite3_finalize(stmt)
+            return nil
+        }
+
+        defer { sqlite3_finalize(stmt) }
+
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+
+        let level = Int(sqlite3_column_int(stmt, 0))
+        let currentXP = Int(sqlite3_column_int(stmt, 1))
+        let power = Int(sqlite3_column_int(stmt, 2))
+        let endurance = Int(sqlite3_column_int(stmt, 3))
+        let baselinesJSON = sqlite3_column_text(stmt, 4).flatMap { String(cString: $0) } ?? "{}"
+
+        return (level, currentXP, power, endurance, baselinesJSON)
+    }
+
+    func saveUserStatus(
+        level: Int,
+        currentXP: Int,
+        power: Int,
+        endurance: Int,
+        baselinesJSON: String
+    ) {
+        guard db != nil else { return }
+
+        let query = """
+        INSERT INTO user_status (id, level, current_xp, power, endurance, baselines)
+        VALUES (1, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            level = excluded.level,
+            current_xp = excluded.current_xp,
+            power = excluded.power,
+            endurance = excluded.endurance,
+            baselines = excluded.baselines;
+        """
+        var stmt: OpaquePointer?
+
+        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else {
+            sqlite3_finalize(stmt)
+            return
+        }
+
+        sqlite3_bind_int(stmt, 1, Int32(level))
+        sqlite3_bind_int(stmt, 2, Int32(currentXP))
+        sqlite3_bind_int(stmt, 3, Int32(power))
+        sqlite3_bind_int(stmt, 4, Int32(endurance))
+        sqlite3_bind_text(stmt, 5, (baselinesJSON as NSString).utf8String, -1, nil)
+
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            print("❌ user_status 保存失敗")
+        }
+
+        sqlite3_finalize(stmt)
     }
 
     // MARK: - 種目追加

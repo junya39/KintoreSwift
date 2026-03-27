@@ -57,10 +57,6 @@ struct WorkoutView: View {
     private let bodyParts = ["ALL", "胸", "背中", "脚", "肩", "腕", "腹筋"]
 
     // MARK: - Computed
-    private var todayTotalVolume: Int {
-        Int(filteredDailyEntries.reduce(0) { $0 + ($1.weight * Double($1.reps)) })
-    }
-
     private var filteredEntries: [SetEntry] {
         let bodyFiltered: [SetEntry]
         if selectedBodyPart == "ALL" {
@@ -133,7 +129,7 @@ struct WorkoutView: View {
                     HeaderSection()
 
                     TrainingDashboardSection(
-                        remainingSeconds: timerVM.remainingSeconds,
+                        remainingSeconds: timerVM.remainingTime(),
                         currentLevel: viewModel.currentLevel,
                         currentXP: userStatusVM.currentXP,
                         requiredXP: userStatusVM.requiredXP(for: userStatusVM.level),
@@ -162,7 +158,7 @@ struct WorkoutView: View {
                             if timerVM.isRunning {
                                 timerVM.stop()
                             } else {
-                                if timerVM.remainingSeconds == 0 {
+                                if timerVM.remainingTime() == 0 {
                                     timerVM.reset()
                                 }
                                 timerVM.start()
@@ -203,12 +199,10 @@ struct WorkoutView: View {
                         dailyEntries: filteredDailyEntries,
                         selectedBodyPart: selectedBodyPart,
                         selectedExercise: selectedExercise,
-                        isExerciseFilterEnabled: isExerciseFilterEnabled
+                        isExerciseFilterEnabled: isExerciseFilterEnabled,
+                        totalWeight: viewModel.todayTotalWeight,
+                        totalReps: viewModel.todayTotalReps
                     )
-
-                    if !filteredDailyEntries.isEmpty {
-                        TodaySummarySection(totalVolume: todayTotalVolume)
-                    }
                     }
                     .padding(.bottom, 32)
                 }
@@ -243,6 +237,7 @@ struct WorkoutView: View {
             .onAppear {
                 viewModel.loadInitialData()
                 viewModel.currentLevel = userStatusVM.level
+                timerVM.startTimerIfNeeded()
                 if let bodyPart = initialSelectedBodyPart, bodyPart == "ALL" || viewModel.exercises.keys.contains(bodyPart) {
                     selectedBodyPart = bodyPart
                 }
@@ -470,27 +465,6 @@ private struct HeaderSection: View {
                 .font(.largeTitle.bold())
                 .foregroundColor(.white)
         }
-        .padding(.horizontal, 16)
-    }
-}
-
-private struct TodaySummarySection: View {
-    let totalVolume: Int
-
-    var body: some View {
-        HStack {
-            Text("合計")
-                .foregroundColor(.white.opacity(0.6))
-
-            Spacer()
-
-            Text("\(totalVolume) kg")
-                .foregroundColor(.green)
-                .bold()
-        }
-        .padding()
-        .background(Color.white.opacity(0.06))
-        .cornerRadius(14)
         .padding(.horizontal, 16)
     }
 }
@@ -819,9 +793,11 @@ private struct DailyListSection: View {
     let selectedBodyPart: String
     let selectedExercise: String
     let isExerciseFilterEnabled: Bool
+    let totalWeight: Double
+    let totalReps: Int
 
     private func weightText(_ w: Double) -> String {
-        w == 0 ? "自重" : "\(Int(w))kg"
+        w == 0 ? "自重" : String(format: "%.1fkg", w)
     }
 
     private var filterSummary: String {
@@ -882,6 +858,31 @@ private struct DailyListSection: View {
                     .cornerRadius(12)
                     .padding(.horizontal, 16)
                 }
+
+                VStack(spacing: 4) {
+                    HStack {
+                        Text("合計")
+                            .foregroundColor(.white.opacity(0.6))
+
+                        Spacer()
+
+                        Text("\(totalWeight, specifier: "%.0f") kg")
+                            .foregroundColor(.green)
+                            .font(.title3)
+                            .bold()
+                    }
+
+                    HStack {
+                        Spacer()
+
+                        Text("\(totalReps) 回")
+                            .foregroundColor(.green)
+                            .font(.title3)
+                            .bold()
+                    }
+                }
+                .padding(.top, 8)
+                .padding(.horizontal, 16)
             }
         }
     }

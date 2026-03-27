@@ -135,14 +135,14 @@ class ContentViewModel: ObservableObject {
 
         let levelBeforeXP = userStatusVM?.level ?? 1
         let actorName = evolutionName(for: levelBeforeXP)
-        let weightText = weight > 0 ? "\(Int(weight))kg" : "自重"
+        let weightText = formattedWeightText(weight)
         let normalMessage = "\(actorName)は\(exercise)\(weightText)を\(reps)回上げた！"
         var eventMessage: String
         switch eventType {
         case .perfectRecord:
             eventMessage = "★★ 完全勝利！★★\n自己ベスト更新！！"
         case .newWeightRecord:
-            eventMessage = "★ NEW RECORD ★\n\(actorName)は\(Int(weight))kgを持ち上げた！"
+            eventMessage = "★ NEW RECORD ★\n\(actorName)は\(formattedWeightValue(weight))kgを持ち上げた！"
         case .newRepRecord:
             eventMessage = "限界突破！\n\(actorName)は\(reps)回達成！"
         case .levelUp:
@@ -359,9 +359,9 @@ class ContentViewModel: ObservableObject {
         }
         let latest = recs[0]
         let prev = recs[1]
-        let wDiff = Int(latest.weight - prev.weight)
+        let wDiff = latest.weight - prev.weight
         let rDiff = latest.reps - prev.reps
-        diffText = "前回比: \(wDiff >= 0 ? "+" : "")\(wDiff)kg / \(rDiff >= 0 ? "+" : "")\(rDiff)回"
+        diffText = "前回比: \(signedWeightText(wDiff))kg / \(rDiff >= 0 ? "+" : "")\(rDiff)回"
         diffColor = (wDiff > 0 || rDiff > 0) ? .green : ((wDiff < 0 || rDiff < 0) ? .red : .gray)
     }
 
@@ -386,7 +386,7 @@ class ContentViewModel: ObservableObject {
 
         guard let last else { return "前セットなし" }
 
-        let weightText = last.weight > 0 ? "\(Int(last.weight))kg" : "自重"
+        let weightText = formattedWeightText(last.weight)
         if let side = last.side, !side.isEmpty {
             return "\(weightText) × \(last.reps)回（\(side)）"
         }
@@ -452,6 +452,19 @@ class ContentViewModel: ObservableObject {
             snapshots[entry.exercise] = snapshot
         }
         exerciseRecordSnapshots = snapshots
+    }
+
+    private func formattedWeightValue(_ weight: Double) -> String {
+        String(format: "%.1f", weight)
+    }
+
+    private func formattedWeightText(_ weight: Double) -> String {
+        weight > 0 ? "\(formattedWeightValue(weight))kg" : "自重"
+    }
+
+    private func signedWeightText(_ weight: Double) -> String {
+        let sign = weight >= 0 ? "+" : ""
+        return "\(sign)\(formattedWeightValue(weight))"
     }
 
     private func publishLog(

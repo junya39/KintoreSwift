@@ -9,7 +9,7 @@ final class IntervalTimerViewModel: ObservableObject {
     @Published var duration: Int
 
     private var timer: AnyCancellable?
-    private var endDate: Date?
+    private(set) var endDate: Date?
     private let timerNotificationId = "workout_timer"
 
     init(duration: Int = 120) {
@@ -18,23 +18,45 @@ final class IntervalTimerViewModel: ObservableObject {
     }
 
     func start() {
-        stop()
-        endDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
+        let seconds = remainingSeconds > 0 ? remainingSeconds : duration
+        remainingSeconds = seconds
+        endDate = Date().addingTimeInterval(TimeInterval(seconds))
+        startTimer()
+    }
+
+    func remainingTime() -> Int {
+        guard let endDate else { return 0 }
+        return max(0, Int(endDate.timeIntervalSinceNow))
+    }
+
+    func startTimerIfNeeded() {
+        guard endDate != nil else { return }
+        startTimer()
+    }
+
+    private func startTimer() {
+        timer?.cancel()
+        timer = nil
+        let seconds = remainingTime()
+        remainingSeconds = seconds
+        guard seconds > 0 else {
+            stop(cancelNotification: false)
+            return
+        }
         isRunning = true
-        scheduleTimerNotification(seconds: remainingSeconds)
+        scheduleTimerNotification(seconds: seconds)
         timer = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self else { return }
-                guard let endDate = self.endDate else {
+                guard self.endDate != nil else {
                     self.stop(cancelNotification: false)
                     return
                 }
 
-                let remaining = max(0, Int(endDate.timeIntervalSinceNow))
-                self.remainingSeconds = remaining
+                self.remainingSeconds = self.remainingTime()
 
-                if remaining == 0 {
+                if self.remainingSeconds == 0 {
                     self.stop(cancelNotification: false)
                     let generator = UINotificationFeedbackGenerator()
                     generator.prepare()
@@ -44,9 +66,11 @@ final class IntervalTimerViewModel: ObservableObject {
     }
 
     func stop(cancelNotification: Bool = true) {
+        remainingSeconds = remainingTime()
         timer?.cancel()
         timer = nil
         isRunning = false
+        endDate = nil
         if cancelNotification {
             cancelTimerNotification()
         }
