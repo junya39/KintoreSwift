@@ -2,26 +2,45 @@ import Foundation
 import SwiftUI
 
 final class UserStatusViewModel: ObservableObject {
-    @Published var level: Int
-    @Published var currentXP: Int
-    @Published var power: Int = 0
-    @Published var endurance: Int = 0
+    @Published var level: Int { didSet { persistIfNeeded() } }
+    @Published var currentXP: Int { didSet { persistIfNeeded() } }
+    @Published var power: Int { didSet { persistIfNeeded() } }
+    @Published var endurance: Int { didSet { persistIfNeeded() } }
     @Published var lastGainedXP: Int = 0
     @Published var didLevelUp: Bool = false
     @Published var levelUpEvent: Int?
     @Published var titleManager = TitleManager()
 
     // 種目ごとの基準値（将来の永続化対象）
-    @Published private(set) var baselines: [String: Double]
+    @Published private(set) var baselines: [String: Double] { didSet { persistIfNeeded() } }
+    private var isHydrating = true
 
     init(
         level: Int = 1,
         currentXP: Int = 0,
         baselines: [String: Double] = [:]
     ) {
-        self.level = max(1, level)
-        self.currentXP = max(0, currentXP)
-        self.baselines = baselines
+        let persisted = DatabaseManager.shared.fetchUserStatus()
+        let resolvedLevel = max(1, persisted?.level ?? level)
+        let resolvedCurrentXP = max(0, persisted?.currentXP ?? currentXP)
+        let resolvedPower = max(0, persisted?.power ?? 0)
+        let resolvedEndurance = max(0, persisted?.endurance ?? 0)
+        let resolvedBaselines = persisted
+            .map { Self.decodeBaselines(from: $0.baselinesJSON) }
+            ?? baselines
+
+        self.level = resolvedLevel
+        self.currentXP = resolvedCurrentXP
+        self.power = resolvedPower
+        self.endurance = resolvedEndurance
+        self.baselines = resolvedBaselines
+        self.isHydrating = false
+
+        titleManager.evaluateTitles(
+            powerLevel: resolvedPower,
+            enduranceLevel: resolvedEndurance,
+            totalLevel: resolvedLevel
+        )
     }
 
     func addXP(volume: Double, exerciseId: String, baseXPOverride: Double? = nil) {
@@ -67,5 +86,32 @@ final class UserStatusViewModel: ObservableObject {
         guard required > 0 else { return 0.0 }
         let progress = Double(currentXP) / Double(required)
         return min(max(progress, 0.0), 1.0)
+    }
+
+    private func persistIfNeeded() {
+        guard !isHydrating else { return }
+
+        DatabaseManager.shared.saveUserStatus(
+            level: max(1, level),
+            currentXP: max(0, currentXP),
+            power: max(0, power),
+            endurance: max(0, endurance),
+            baselinesJSON: Self.encodeBaselines(baselines)
+        )
+    }
+
+    private static func encodeBaselines(_ baselines: [String: Double]) -> String {
+        guard
+            let data = try? JSONEncoder().encode(baselines),
+            let text = String(data: data, encoding: .utf8)
+        else {
+            return "{}"
+        }
+        return text
+    }
+
+    private static func decodeBaselines(from text: String) -> [String: Double] {
+        guard let data = text.data(using: .utf8) else { return [:] }
+        return (try? JSONDecoder().decode([String: Double].self, from: data)) ?? [:]
     }
 }

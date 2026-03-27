@@ -257,21 +257,21 @@ private struct EvolutionStage {
     static func from(level: Int) -> EvolutionStage {
         switch level {
         case 1...4:
-            return EvolutionStage(name: "がりがり", assetName: "char_garigari")
+            return EvolutionStage(name: "がりがり", assetName: "lv1_idle_1")
         case 5...9:
-            return EvolutionStage(name: "ほそ", assetName: "char_hoso")
+            return EvolutionStage(name: "ほそ", assetName: "lv1_idle_1")
         case 10...14:
-            return EvolutionStage(name: "ふつう", assetName: "char_futsuu")
+            return EvolutionStage(name: "ふつう", assetName: "macho_idle_1")
         case 15...19:
-            return EvolutionStage(name: "ほそまっちょ", assetName: "char_hosomacho")
+            return EvolutionStage(name: "ほそまっちょ", assetName: "macho_idle_1")
         case 20...29:
-            return EvolutionStage(name: "まっちょ", assetName: "char_macho")
+            return EvolutionStage(name: "まっちょ", assetName: "lv20_idle_1")
         case 30...39:
-            return EvolutionStage(name: "ごりまっちょ", assetName: "char_gorimacho")
+            return EvolutionStage(name: "ごりまっちょ", assetName: "lv20_idle_1")
         case 40...99:
-            return EvolutionStage(name: "ごりらっちょ", assetName: "char_goriracho")
+            return EvolutionStage(name: "ごりらっちょ", assetName: "lv20_idle_1")
         default:
-            return EvolutionStage(name: "れじぇんど", assetName: "char_legend")
+            return EvolutionStage(name: "れじぇんど", assetName: "lv20_idle_1")
         }
     }
 }
@@ -348,11 +348,9 @@ private struct CharacterHeaderView: View {
 
                 VStack(spacing: 16) {
                     Spacer()
-                    Image(stage.assetName)
-                        .resizable()
-                        .interpolation(.none)
-                        .antialiased(false)
+                    CharacterView(level: level)
                         .frame(width: 256, height: 256)
+                        .clipped()
                     Spacer()
                 }
 
