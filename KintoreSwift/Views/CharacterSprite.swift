@@ -8,15 +8,15 @@ func getCharacterImages(form: CharacterForm) -> [String] {
         ]
     case .macho:
         return [
-            "macho_idle_1",
-            "macho_idle_2",
-            "macho_idle_3"
+            "lv15_idle_1",
+            "lv15_idle_2",
+            "lv15_idle_3"
         ]
     case .finalForm:
         return [
-            "lv20_idle_1",
-            "lv20_idle_2",
-            "lv20_idle_3"
+            "lv30_idle_1",
+            "lv30_idle_2",
+            "lv30_idle_3"
         ]
     }
 }
