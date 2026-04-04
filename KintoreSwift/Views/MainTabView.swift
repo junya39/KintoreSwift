@@ -30,5 +30,24 @@ struct MainTabView: View {
                 }
         }
         .background(Color.black)
+        .overlay {
+            if let event = userStatusVM.evolutionEvent {
+                EvolutionOverlayView(
+                    event: event,
+                    imageNames: evolutionImageNames(for: event)
+                )
+                .transition(.opacity)
+                .zIndex(999)
+            }
+        }
+        .onChange(of: userStatusVM.evolutionEvent) { _, newValue in
+            guard let newValue else { return }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                if userStatusVM.evolutionEvent == newValue {
+                    userStatusVM.evolutionEvent = nil
+                }
+            }
+        }
     }
 }

@@ -134,6 +134,7 @@ class ExerciseDetailViewModel: ObservableObject {
         bodyPart: String,
         exercise: String,
         weight: Double,
+        isBodyweight: Bool,
         reps: Int,
         note: String?,
         side: String
@@ -143,6 +144,7 @@ class ExerciseDetailViewModel: ObservableObject {
             bodyPart: bodyPart,
             exercise: exercise,
             weight: weight,
+            isBodyweight: isBodyweight,
             reps: reps,
             note: note,
             side: side

@@ -106,6 +106,7 @@ class ContentViewModel: ObservableObject {
         bodyPart: String,
         exercise: String,
         weight: Double,
+        isBodyweight: Bool,
         reps: Int,
         note: String?,
         side: String,
@@ -166,7 +167,8 @@ class ContentViewModel: ObservableObject {
             let totalVolume = max(0, weight) * Double(reps)
             if let userStatusVM {
                 let xpType = xpType(for: bodyPart)
-                let baseXP = sqrt(totalVolume)
+                let effectiveVolume = isBodyweight ? Double(reps) * 10.0 : totalVolume
+                let baseXP = sqrt(max(0, effectiveVolume))
                 let adjustedBaseXP = userStatusVM.titleManager.applyBonus(
                     baseXP: baseXP,
                     type: xpType
@@ -174,7 +176,9 @@ class ContentViewModel: ObservableObject {
                 let subXP = adjustedBaseXP * 0.3
                 userStatusVM.addXP(
                     volume: totalVolume,
+                    reps: reps,
                     exerciseId: exercise,
+                    isBodyweight: isBodyweight,
                     baseXPOverride: adjustedBaseXP
                 )
                 applySubXP(
@@ -501,24 +505,7 @@ class ContentViewModel: ObservableObject {
     }
 
     private func evolutionName(for level: Int) -> String {
-        switch level {
-        case 1...4:
-            return "がりがり"
-        case 5...9:
-            return "ほそ"
-        case 10...14:
-            return "ふつう"
-        case 15...19:
-            return "ほそまっちょ"
-        case 20...29:
-            return "まっちょ"
-        case 30...39:
-            return "ごりまっちょ"
-        case 40...99:
-            return "ごりらっちょ"
-        default:
-            return "れじぇんど"
-        }
+        evolutionStage(for: level).name
     }
 
 }

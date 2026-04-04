@@ -9,6 +9,7 @@ final class UserStatusViewModel: ObservableObject {
     @Published var lastGainedXP: Int = 0
     @Published var didLevelUp: Bool = false
     @Published var levelUpEvent: Int?
+    @Published var evolutionEvent: EvolutionEvent?
     @Published var titleManager = TitleManager()
 
     // 種目ごとの基準値（将来の永続化対象）
@@ -39,18 +40,32 @@ final class UserStatusViewModel: ObservableObject {
         titleManager.evaluateTitles(
             powerLevel: resolvedPower,
             enduranceLevel: resolvedEndurance,
-            totalLevel: resolvedLevel
+            totalLevel: resolvedLevel,
+            shouldEmitEvent: false
         )
     }
 
-    func addXP(volume: Double, exerciseId: String, baseXPOverride: Double? = nil) {
-        guard volume > 0, !exerciseId.isEmpty else { return }
+    func addXP(
+        volume: Double,
+        reps: Int,
+        exerciseId: String,
+        isBodyweight: Bool,
+        baseXPOverride: Double? = nil
+    ) {
+        guard !exerciseId.isEmpty else { return }
+        let oldLevel = level
+        let effectiveVolume = effectiveVolume(
+            volume: volume,
+            reps: reps,
+            isBodyweight: isBodyweight
+        )
+        guard effectiveVolume > 0 else { return }
 
-        let baseXP = max(0, baseXPOverride ?? sqrt(volume))
+        let baseXP = max(0, baseXPOverride ?? sqrt(effectiveVolume))
 
-        // baseline未登録時は初回volumeを採用
-        let baseline = baselines[exerciseId] ?? volume
-        let growthRate = volume / baseline
+        // baseline未登録時は初回の実効負荷量を採用
+        let baseline = baselines[exerciseId] ?? effectiveVolume
+        let growthRate = effectiveVolume / baseline
         let multiplier = min(max(growthRate, 0.8), 1.2)
         let totalBonusMultiplier =
             1 + (Double(power) * 0.01) + (Double(endurance) * 0.01)
@@ -60,7 +75,7 @@ final class UserStatusViewModel: ObservableObject {
         lastGainedXP = gainedXP
 
         // baselineを指数移動平均で更新
-        baselines[exerciseId] = baseline * 0.9 + volume * 0.1
+        baselines[exerciseId] = baseline * 0.9 + effectiveVolume * 0.1
 
         // レベルアップ判定
         while currentXP >= requiredXP(for: level) {
@@ -70,11 +85,17 @@ final class UserStatusViewModel: ObservableObject {
             didLevelUp = true
         }
 
+        checkEvolution(oldLevel: oldLevel, newLevel: level)
+
         titleManager.evaluateTitles(
             powerLevel: power,
             enduranceLevel: endurance,
             totalLevel: level
         )
+    }
+
+    func previewEvolution(oldLevel: Int, newLevel: Int) {
+        checkEvolution(oldLevel: oldLevel, newLevel: newLevel)
     }
 
     func requiredXP(for level: Int) -> Int {
@@ -113,5 +134,23 @@ final class UserStatusViewModel: ObservableObject {
     private static func decodeBaselines(from text: String) -> [String: Double] {
         guard let data = text.data(using: .utf8) else { return [:] }
         return (try? JSONDecoder().decode([String: Double].self, from: data)) ?? [:]
+    }
+
+    private func effectiveVolume(volume: Double, reps: Int, isBodyweight: Bool) -> Double {
+        guard reps > 0 else { return 0 }
+        if isBodyweight {
+            return Double(reps) * 10.0
+        }
+        return max(0, volume)
+    }
+
+    private func checkEvolution(oldLevel: Int, newLevel: Int) {
+        guard evolutionEvent == nil else { return }
+        guard let event = evolutionEventForTransition(oldLevel: oldLevel, newLevel: newLevel) else {
+            return
+        }
+
+        evolutionEvent = event
+        EvolutionSoundPlayer.shared.playEvolutionSound()
     }
 }

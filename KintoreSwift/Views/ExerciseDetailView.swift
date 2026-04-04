@@ -107,6 +107,7 @@ struct ExerciseDetailView: View {
                             bodyPart: updated.bodyPart,
                             exercise: updated.exercise,
                             weight: updated.weight,
+                            isBodyweight: updated.weight == 0,
                             reps: updated.reps,
                             note: updated.note,
                             side: updated.side ?? ""

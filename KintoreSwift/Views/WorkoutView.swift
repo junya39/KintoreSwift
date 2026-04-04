@@ -355,6 +355,7 @@ struct WorkoutView: View {
             bodyPart: actualBodyPart,
             exercise: selectedExercise,
             weight: weight,
+            isBodyweight: isBodyweight,
             reps: reps,
             note: note.isEmpty ? nil : note,
             side: selectedSide,
@@ -926,7 +927,7 @@ private struct InputFormSection: View {
                         .font(.title3.bold())
                         .foregroundColor(.white)
 
-                    if let item = toastCenter.current {
+                    if let item = toastCenter.current, userStatusVM.evolutionEvent == nil {
                         HStack(spacing: 12) {
                             Image(systemName: "bolt.fill")
                                 .font(.title3.weight(.black))
@@ -1042,23 +1043,27 @@ private struct InputFormSection: View {
                 LevelUpOverlay(level: level) {
                     levelUpOverlayLevel = nil
                 }
-                .zIndex(999)
+                .zIndex(998)
             } else if let title = titleUnlockOverlayTitle {
                 LevelUpOverlay(title: title) {
                     titleUnlockOverlayTitle = nil
                 }
-                .zIndex(998)
+                .zIndex(997)
             }
         }
         .onReceive(userStatusVM.$levelUpEvent) { newLevel in
             guard let level = newLevel else { return }
+            guard level != 15, level != 30 else {
+                userStatusVM.levelUpEvent = nil
+                return
+            }
             levelUpOverlayLevel = level
             userStatusVM.levelUpEvent = nil
         }
-        .onReceive(userStatusVM.titleManager.$titleUnlockEvent) { unlockedTitle in
+        .onReceive(userStatusVM.titleManager.$newlyUnlockedTitle) { unlockedTitle in
             guard let unlockedTitle else { return }
             titleUnlockOverlayTitle = unlockedTitle
-            userStatusVM.titleManager.titleUnlockEvent = nil
+            userStatusVM.titleManager.newlyUnlockedTitle = nil
         }
         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: toastCenter.current?.id)
     }

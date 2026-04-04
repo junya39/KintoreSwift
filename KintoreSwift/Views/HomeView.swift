@@ -247,21 +247,14 @@ struct HomeView: View {
                 }
             }
         }
-    }
-}
-
-private struct EvolutionStage {
-    let name: String
-    let assetName: String
-
-    static func from(level: Int) -> EvolutionStage {
-        switch level {
-        case 1...14:
-            return EvolutionStage(name: "フツウ", assetName: "lv1_idle_1")
-        case 15...29:
-            return EvolutionStage(name: "ホソマッチョ", assetName: "lv15_idle_1")
-        default:
-            return EvolutionStage(name: "マッチョ", assetName: "lv30_idle_1")
+        .onChange(of: debugOverrideEnabled) { _, enabled in
+            if enabled {
+                debugLevel = userStatusVM.level
+            }
+        }
+        .onChange(of: debugLevel) { oldValue, newValue in
+            guard debugOverrideEnabled else { return }
+            userStatusVM.previewEvolution(oldLevel: oldValue, newLevel: newValue)
         }
     }
 }
@@ -293,7 +286,7 @@ private struct CharacterHeaderView: View {
     let power: Int
     let endurance: Int
 
-    private var stage: EvolutionStage { EvolutionStage.from(level: level) }
+    private var stage: EvolutionStageInfo { evolutionStage(for: level) }
     private var statusBoxView: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(stage.name)
@@ -379,8 +372,8 @@ private struct DebugEvolutionPanelView: View {
         ("マッチョ", 100)
     ]
 
-    private var stage: EvolutionStage {
-        EvolutionStage.from(level: displayLevel)
+    private var stage: EvolutionStageInfo {
+        evolutionStage(for: displayLevel)
     }
 
     private var columns: [GridItem] {

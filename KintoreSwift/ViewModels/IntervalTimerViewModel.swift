@@ -6,21 +6,32 @@ import UserNotifications
 final class IntervalTimerViewModel: ObservableObject {
     @Published var remainingSeconds: Int
     @Published var isRunning: Bool = false
-    @Published var duration: Int
+    @Published var duration: Int {
+        didSet { persistState() }
+    }
 
     private var timer: AnyCancellable?
     private(set) var endDate: Date?
     private let timerNotificationId = "workout_timer"
+    private let defaults = UserDefaults.standard
+    private let durationKey = "workout_timer_duration"
+    private let remainingSecondsKey = "workout_timer_remaining_seconds"
+    private let endDateKey = "workout_timer_end_date"
+    private let isRunningKey = "workout_timer_is_running"
 
     init(duration: Int = 120) {
-        self.duration = duration
-        self.remainingSeconds = duration
+        let storedDuration = defaults.object(forKey: durationKey) as? Int
+        let restoredDuration = max(1, storedDuration ?? duration)
+        self.duration = restoredDuration
+        self.remainingSeconds = restoredDuration
+        restoreState()
     }
 
     func start() {
         let seconds = remainingSeconds > 0 ? remainingSeconds : duration
         remainingSeconds = seconds
         endDate = Date().addingTimeInterval(TimeInterval(seconds))
+        persistState()
         startTimer()
     }
 
@@ -30,6 +41,7 @@ final class IntervalTimerViewModel: ObservableObject {
     }
 
     func startTimerIfNeeded() {
+        restoreState()
         guard endDate != nil else { return }
         startTimer()
     }
@@ -44,6 +56,7 @@ final class IntervalTimerViewModel: ObservableObject {
             return
         }
         isRunning = true
+        persistState()
         scheduleTimerNotification(seconds: seconds)
         timer = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
@@ -55,6 +68,7 @@ final class IntervalTimerViewModel: ObservableObject {
                 }
 
                 self.remainingSeconds = self.remainingTime()
+                self.persistState()
 
                 if self.remainingSeconds == 0 {
                     self.stop(cancelNotification: false)
@@ -71,6 +85,7 @@ final class IntervalTimerViewModel: ObservableObject {
         timer = nil
         isRunning = false
         endDate = nil
+        persistState()
         if cancelNotification {
             cancelTimerNotification()
         }
@@ -80,6 +95,37 @@ final class IntervalTimerViewModel: ObservableObject {
         stop()
         endDate = nil
         remainingSeconds = duration
+        persistState()
+    }
+
+    private func restoreState() {
+        let storedRemainingSeconds = defaults.object(forKey: remainingSecondsKey) as? Int
+        let storedIsRunning = defaults.bool(forKey: isRunningKey)
+
+        if let storedEndDate = defaults.object(forKey: endDateKey) as? Date {
+            endDate = storedEndDate
+            let seconds = max(0, Int(storedEndDate.timeIntervalSinceNow))
+            remainingSeconds = seconds
+            if seconds == 0 {
+                isRunning = false
+                endDate = nil
+                persistState()
+            } else {
+                isRunning = storedIsRunning
+            }
+            return
+        }
+
+        endDate = nil
+        isRunning = false
+        remainingSeconds = max(0, storedRemainingSeconds ?? duration)
+    }
+
+    private func persistState() {
+        defaults.set(duration, forKey: durationKey)
+        defaults.set(remainingSeconds, forKey: remainingSecondsKey)
+        defaults.set(isRunning, forKey: isRunningKey)
+        defaults.set(endDate, forKey: endDateKey)
     }
 
     private func scheduleTimerNotification(seconds: Int) {
