@@ -256,22 +256,12 @@ private struct EvolutionStage {
 
     static func from(level: Int) -> EvolutionStage {
         switch level {
-        case 1...4:
-            return EvolutionStage(name: "がりがり", assetName: "lv1_idle_1")
-        case 5...9:
-            return EvolutionStage(name: "ほそ", assetName: "lv1_idle_1")
-        case 10...14:
-            return EvolutionStage(name: "ふつう", assetName: "macho_idle_1")
-        case 15...19:
-            return EvolutionStage(name: "ほそまっちょ", assetName: "macho_idle_1")
-        case 20...29:
-            return EvolutionStage(name: "まっちょ", assetName: "lv20_idle_1")
-        case 30...39:
-            return EvolutionStage(name: "ごりまっちょ", assetName: "lv20_idle_1")
-        case 40...99:
-            return EvolutionStage(name: "ごりらっちょ", assetName: "lv20_idle_1")
+        case 1...14:
+            return EvolutionStage(name: "フツウ", assetName: "lv1_idle_1")
+        case 15...29:
+            return EvolutionStage(name: "ホソマッチョ", assetName: "lv15_idle_1")
         default:
-            return EvolutionStage(name: "れじぇんど", assetName: "lv20_idle_1")
+            return EvolutionStage(name: "マッチョ", assetName: "lv30_idle_1")
         }
     }
 }
@@ -381,14 +371,12 @@ private struct DebugEvolutionPanelView: View {
     let displayLevel: Int
 
     private let presets: [(name: String, level: Int)] = [
-        ("がりがり", 1),
-        ("ほそ", 5),
-        ("ふつう", 10),
-        ("ほそまっちょ", 15),
-        ("まっちょ", 20),
-        ("ごりまっちょ", 30),
-        ("ごりらっちょ", 40),
-        ("れじぇんど", 100)
+        ("フツウ", 1),
+        ("フツウ", 14),
+        ("ホソマッチョ", 15),
+        ("ホソマッチョ", 29),
+        ("マッチョ", 30),
+        ("マッチョ", 100)
     ]
 
     private var stage: EvolutionStage {
@@ -411,7 +399,7 @@ private struct DebugEvolutionPanelView: View {
             .disabled(!enabled)
 
             LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(presets, id: \.name) { preset in
+                ForEach(Array(presets.enumerated()), id: \.offset) { _, preset in
                     Button(preset.name) {
                         debugLevel = preset.level
                         enabled = true
