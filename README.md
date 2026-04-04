@@ -18,9 +18,9 @@
 
 ## 📱 スクリーンショット
 
-| ホーム | ワークアウト | 履歴（グラフ） |
-|--------|------|--------|
-| ![Home](screenshots/home.png) | ![History](screenshots/history.png) | ![Chart](screenshots/chart.png) |
+| ホーム | ワークアウト | 履歴（グラフ） | カレンダー |
+|--------|--------|--------|--------|
+| ![Home](screenshots/home.png) | ![Workout](screenshots/history.png) | ![Chart](screenshots/chart.png) | ![Calendar](screenshots/calendar.png) |
 
 ※ スクリーンショットは `KintoreSwift/screenshots/` に配置してください。
 
@@ -74,4 +74,3 @@
 - 🧍 キャラクター育成画面
 - ☁ iCloudバックアップ対応
 - 🌍 多言語対応
-
