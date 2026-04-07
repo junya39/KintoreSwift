@@ -23,7 +23,7 @@
 
 | ホーム | 履歴 | 履歴（グラフ） | カレンダー |
 |--------|--------|--------|--------|
-| ![Home](screenshots/home.png) | ![History](screenshots/history.png) | ![Chart](screenshots/chart.png) | ![Calendar](screenshots/calendar.png) |
+| <img src="screenshots/home.png" alt="Home" width="180"> | <img src="screenshots/history.png" alt="History" width="180"> | <img src="screenshots/chart.png" alt="Chart" width="180"> | <img src="screenshots/calendar.png" alt="Calendar" width="180"> |
 
 ---
 
