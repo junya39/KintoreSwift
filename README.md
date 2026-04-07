@@ -82,4 +82,3 @@
 
 - ☁ iCloudバックアップ対応
 - 🌍 多言語対応
-- 📤 README / App Store 向け素材整備
