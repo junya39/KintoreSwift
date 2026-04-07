@@ -1,0 +1,12 @@
+.DS_Store
+
+# Xcode user-specific files
+xcuserdata/
+*.xcuserstate
+
+# Xcode build artifacts
+DerivedData/
+build/
+
+# Local-only project notes
+PROJECT_STATE.md
