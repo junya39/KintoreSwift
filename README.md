@@ -1,9 +1,12 @@
-# 🏋️‍♂️ KintoreSwift
+## KintoreSwift
 
-筋トレ × ゲーミフィケーションで、継続を楽しくするアプリ
+モンスター育成とトレーニングが連動する、新しいワークアウト体験。
 
-**KintoreSwift** は、筋トレの記録と成長を可視化するためのiOSアプリです。  
-シンプルなUIでトレーニング内容を記録し、データと演出でモチベーションを高めます。
+トレーニングを記録することでモンスターが成長し、
+条件を満たすと新たなモンスターと出会える。
+
+継続するほど世界が広がっていく、
+“ゲームのような筋トレアプリ”。
 
 ---
 
@@ -35,20 +38,49 @@
 
 ---
 
+## 👾 モンスター一覧
+
+| #001 バルグロン | #002 ベンチーノ | #003 デドリガン |
+|---|---|---|
+| <img src="./screenshots/monsters/monster_001.png" width="180"><br>バルグロン | <img src="./screenshots/monsters/monster_002.png" width="180"><br>ベンチーノ | <img src="./screenshots/monsters/monster_003.png" width="180"><br>デドリガン |
+
+| #004 ホーンラック | #005 ツノガルド | #006 モフリフト |
+|---|---|---|
+| <img src="./screenshots/monsters/monster_004.png" width="180"><br>ホーンラック | <img src="./screenshots/monsters/monster_005.png" width="180"><br>ツノガルド | <img src="./screenshots/monsters/monster_006.png" width="180"><br>モフリフト |
+
+| #007 クロウガル | #008 ガンマウス | #009 メガドラン |
+|---|---|---|
+| <img src="./screenshots/monsters/monster_007.png" width="180"><br>クロウガル | <img src="./screenshots/monsters/monster_008.png" width="180"><br>ガンマウス | <img src="./screenshots/monsters/monster_009.png" width="180"><br>メガドラン |
+
+| #010 ダンベルガ | #011 バルグロス | #012 ベンチザウル |
+|---|---|---|
+| <img src="./screenshots/monsters/monster_010.png" width="180"><br>ダンベルガ | <img src="./screenshots/monsters/monster_011.png" width="180"><br>バルグロス | <img src="./screenshots/monsters/monster_012.png" width="180"><br>ベンチザウル |
+
+| #013 デドレックス | #014 ホラグマ | #015 ギガマウス |
+|---|---|---|
+| <img src="./screenshots/monsters/monster_013.png" width="180"><br>デドレックス | <img src="./screenshots/monsters/monster_014.png" width="180"><br>ホラグマ | <img src="./screenshots/monsters/monster_015.png" width="180"><br>ギガマウス |
+
+---
+
 ## ✨ 主な機能
 
-- 📆 **カレンダー表示**：トレーニング実施日をハイライト
-- 🎮 **キャラクター育成システム**
-- 🧬 **進化システム**：レベルに応じて変化
-- 🏋️‍♀️ **種目・部位別記録**：重量トレーニングと自重トレーニングの両方に対応
-- 📊 **折れ線グラフ表示（Swift Charts）**：重量推移を日次・週次・月次で可視化
-- 📖 **履歴画面統一表示**：HOME/Workout どちらからでも同じ履歴画面へ遷移
-- ⏱ **通知対応ワークアウトタイマー**
-- 🆙 **レベルアップ・進化演出**
-- 🏷 **称号アンロック**：POWER / ENDURANCE の育成傾向に応じて称号を獲得
-- 💪 **キャラクター育成**：レベル帯に応じて見た目と待機アニメーションが変化
-- 🔄 **前回比の自動表示**
-- 🗑 **スワイプ削除**
+- 🐲 モンスター育成  
+  トレーニングに応じて相棒モンスターが成長
+
+- 🔓 解放（アンロック）  
+  特定条件を達成すると新たなモンスターが出現
+
+- 🌱 進化システム  
+  継続や成果に応じてモンスターが変化
+
+- 📅 カレンダー連動  
+  トレーニング履歴を日付単位で管理
+
+- 🏋️ ワークアウト記録  
+  種目・重量・回数をシンプルに記録
+
+- 📈 成長の可視化  
+  グラフや履歴でトレーニングの変化を確認
 
 ---
 
