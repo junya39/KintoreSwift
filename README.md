@@ -21,9 +21,43 @@
 
 ## 📱 スクリーンショット
 
-| ホーム | 履歴 | 履歴（グラフ） | カレンダー |
-|--------|--------|--------|--------|
-| <img src="screenshots/home.png" alt="Home" width="180"> | <img src="screenshots/history.png" alt="History" width="180"> | <img src="screenshots/chart.png" alt="Chart" width="180"> | <img src="screenshots/calendar.png" alt="Calendar" width="180"> |
+モンスター育成とトレーニングが連動する、新しいワークアウト体験。
+
+---
+
+### 🏠 ホーム / 相棒モンスター
+
+![Home](./screenshots/Home2.png)
+
+---
+
+### 📘 モンスター図鑑
+
+![Dex](./screenshots/Monsterdex2.png)
+
+---
+
+### 📅 カレンダー / トレーニング導線
+
+![Calendar](./screenshots/Calendar2.png)
+
+---
+
+### 🏋️ ワークアウト
+
+![Workout](./screenshots/timer2.png)
+
+---
+
+### ✍️ セット入力
+
+![Input](./screenshots/input2.png)
+
+---
+
+### 📈 成長グラフ
+
+![Graph](./screenshots/graph2.png)
 
 ---
 
