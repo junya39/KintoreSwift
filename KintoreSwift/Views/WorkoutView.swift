@@ -58,6 +58,14 @@ struct WorkoutView: View {
     private let bodyParts = ["ALL", "胸", "背中", "脚", "肩", "腕", "腹筋"]
 
     // MARK: - Computed
+    private var selectedTimerSeconds: Int {
+        tempMinute * 60 + tempSecond
+    }
+
+    private var timerDisplaySeconds: Int {
+        isEditingTimer ? selectedTimerSeconds : timerVM.remainingSeconds
+    }
+
     private var filteredEntries: [SetEntry] {
         let bodyFiltered: [SetEntry]
         if selectedBodyPart == "ALL" {
@@ -118,6 +126,11 @@ struct WorkoutView: View {
         _isExerciseFilterEnabled = State(initialValue: initialSelectedExercise != nil)
     }
 
+    private func updateTimerPreview() {
+        guard isEditingTimer else { return }
+        timerVM.remainingSeconds = selectedTimerSeconds
+    }
+
     // MARK: - Body
     var body: some View {
         NavigationStack {
@@ -130,7 +143,7 @@ struct WorkoutView: View {
                     HeaderSection()
 
                     TrainingDashboardSection(
-                        remainingSeconds: timerVM.remainingTime(),
+                        remainingSeconds: timerDisplaySeconds,
                         currentLevel: viewModel.currentLevel,
                         currentXP: userStatusVM.currentXP,
                         requiredXP: userStatusVM.requiredXP(for: userStatusVM.level),
@@ -145,6 +158,7 @@ struct WorkoutView: View {
                             let total = min(timerVM.duration, 3600)
                             tempMinute = total / 60
                             tempSecond = total % 60
+                            timerVM.remainingSeconds = total
                             isEditingTimer = true
                         },
                         onDoneTap: {
@@ -169,6 +183,12 @@ struct WorkoutView: View {
                             timerVM.reset()
                         }
                     )
+                    .onChange(of: tempMinute) { _, _ in
+                        updateTimerPreview()
+                    }
+                    .onChange(of: tempSecond) { _, _ in
+                        updateTimerPreview()
+                    }
 
                     BodyPartSection(
                         selectedBodyPart: $selectedBodyPart,
