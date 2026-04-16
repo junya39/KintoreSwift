@@ -21,6 +21,12 @@ struct MainTabView: View {
                     Text("Workout")
                 }
 
+            MonsterDexView()
+                .tabItem {
+                    Image(systemName: "square.grid.2x2")
+                    Text("Dex")
+                }
+
             LevelView(
                 viewModel: LevelViewModel(userStatus: userStatusVM)
             )

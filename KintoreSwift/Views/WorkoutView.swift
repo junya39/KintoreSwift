@@ -45,6 +45,7 @@ struct WorkoutView: View {
     @StateObject private var viewModel = WorkoutViewModel()
     @StateObject private var timerVM = IntervalTimerViewModel()
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
+    @EnvironmentObject private var monsterManager: MonsterManager
 
     // ✅ 日付タップで履歴へ遷移するためのフラグ
     @State private var showHistory = false
@@ -360,6 +361,21 @@ struct WorkoutView: View {
             side: selectedSide,
             userStatusVM: userStatusVM
         )
+        if monsterManager.unlockHoraguma() {
+            MonsterUnlockToastCenter.shared.show(monsterName: Monster.horaguma.name)
+        }
+        if hasThreeDayWorkoutStreakIncludingToday(),
+           monsterManager.unlockTsunogard() {
+            MonsterUnlockToastCenter.shared.show(monsterName: MonsterMasterData.tsunogard.name)
+        }
+        if hasThreeChestTrainingRecords(),
+           monsterManager.unlockBenchino() {
+            MonsterUnlockToastCenter.shared.show(monsterName: MonsterMasterData.benchino.name)
+        }
+        if hasThreeBackTrainingRecords(),
+           monsterManager.unlockDedorigan() {
+            MonsterUnlockToastCenter.shared.show(monsterName: MonsterMasterData.dedorigan.name)
+        }
 
         let postSaveSideAction = viewModel.postSaveSideAction(for: currentSide)
 
@@ -384,6 +400,47 @@ struct WorkoutView: View {
 
         timerVM.reset()
         timerVM.start()
+    }
+
+    private func hasThreeDayWorkoutStreakIncludingToday() -> Bool {
+        let calendar = Calendar.current
+        let workoutDays = Set(viewModel.entries.map { calendar.startOfDay(for: $0.date) })
+        let today = calendar.startOfDay(for: Date())
+
+        for dayOffset in 0...2 {
+            guard
+                let day = calendar.date(byAdding: .day, value: -dayOffset, to: today),
+                workoutDays.contains(day)
+            else {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    private func hasThreeChestTrainingRecords() -> Bool {
+        viewModel.entries.filter(isChestTraining).count >= 3
+    }
+
+    private func isChestTraining(_ entry: SetEntry) -> Bool {
+        if entry.bodyPart == "胸" { return true }
+
+        let exercise = entry.exercise.lowercased()
+        let chestKeywords = ["ベンチ", "チェスト", "胸", "フライ", "だっちゅーの"]
+        return chestKeywords.contains { exercise.contains($0) }
+    }
+
+    private func hasThreeBackTrainingRecords() -> Bool {
+        viewModel.entries.filter(isBackTraining).count >= 3
+    }
+
+    private func isBackTraining(_ entry: SetEntry) -> Bool {
+        if entry.bodyPart == "背中" { return true }
+
+        let exercise = entry.exercise.lowercased()
+        let backKeywords = ["チンニング", "ロー", "ラットプル", "デッド", "プルアップ"]
+        return backKeywords.contains { exercise.contains($0) }
     }
 
     private func applySideTransition(_ action: ContentViewModel.PostSaveSideAction) {
@@ -890,6 +947,7 @@ private struct DailyListSection: View {
 
 private struct InputFormSection: View {
     @ObservedObject private var toastCenter = XPToastCenter.shared
+    @ObservedObject private var monsterToastCenter = MonsterUnlockToastCenter.shared
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
     @State private var levelUpOverlayLevel: Int?
     @State private var titleUnlockOverlayTitle: Title?
@@ -955,6 +1013,35 @@ private struct InputFormSection: View {
                         .shadow(color: .yellow.opacity(0.35), radius: 16, x: 0, y: 0)
                         .shadow(color: .black.opacity(0.4), radius: 16, x: 0, y: 8)
                         .scaleEffect(item.comboText == nil ? 1.0 : 1.07)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    if let item = monsterToastCenter.current {
+                        HStack(spacing: 12) {
+                            Image(systemName: "pawprint.fill")
+                                .font(.title3.weight(.black))
+                                .foregroundStyle(.green)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title)
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(.white)
+                                Text(item.monsterName)
+                                    .font(.title3.weight(.heavy))
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 14)
+                        .background(
+                            Capsule()
+                                .fill(Color.black.opacity(0.75))
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(.green.opacity(0.55), lineWidth: 1.2)
+                        )
+                        .shadow(color: .green.opacity(0.3), radius: 16, x: 0, y: 0)
+                        .shadow(color: .black.opacity(0.4), radius: 16, x: 0, y: 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
@@ -1061,5 +1148,6 @@ private struct InputFormSection: View {
             userStatusVM.titleManager.titleUnlockEvent = nil
         }
         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: toastCenter.current?.id)
+        .animation(.spring(response: 0.55, dampingFraction: 0.78), value: monsterToastCenter.current?.id)
     }
 }
