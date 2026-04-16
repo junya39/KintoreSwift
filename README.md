@@ -23,41 +23,15 @@
 
 モンスター育成とトレーニングが連動する、新しいワークアウト体験。
 
----
-
-### 🏠 ホーム / 相棒モンスター
-
-![Home](./screenshots/Home2.png)
+| ホーム | 図鑑 | カレンダー |
+|--------|------|------------|
+| <img src="./screenshots/Home2.png" width="220"> | <img src="./screenshots/Monsterdex2.png" width="220"> | <img src="./screenshots/Calendar2.png" width="220"> |
 
 ---
 
-### 📘 モンスター図鑑
-
-![Dex](./screenshots/Monsterdex2.png)
-
----
-
-### 📅 カレンダー / トレーニング導線
-
-![Calendar](./screenshots/Calendar2.png)
-
----
-
-### 🏋️ ワークアウト
-
-![Workout](./screenshots/timer2.png)
-
----
-
-### ✍️ セット入力
-
-![Input](./screenshots/input2.png)
-
----
-
-### 📈 成長グラフ
-
-![Graph](./screenshots/graph2.png)
+| ワークアウト | セット入力 | グラフ |
+|--------------|------------|--------|
+| <img src="./screenshots/timer2.png" width="220"> | <img src="./screenshots/input2.png" width="220"> | <img src="./screenshots/graph2.png" width="220"> |
 
 ---
 
