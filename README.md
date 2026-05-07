@@ -131,6 +131,12 @@ KintoreSwiftは、筋トレの記録を「ただ残すもの」ではなく、
 
 ---
 
+## 📄 Documents
+
+- [KintoreSwift Product Spec](./docs/KintoreSwift_PRODUCT_SPEC.md)
+
+---
+
 ## 🔮 今後の予定
 
 - ☁ iCloudバックアップ対応
