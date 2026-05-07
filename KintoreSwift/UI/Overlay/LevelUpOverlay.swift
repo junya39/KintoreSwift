@@ -4,7 +4,7 @@ import UIKit
 
 struct LevelUpOverlay: View {
     enum OverlayKind {
-        case levelUp(level: Int)
+        case levelUp(event: LevelUpEvent)
         case titleUnlocked(title: Title)
     }
 
@@ -19,8 +19,8 @@ struct LevelUpOverlay: View {
     @State private var contentOpacity: Double = 1.0
     @State private var player: AVAudioPlayer?
 
-    init(level: Int, fanfareVolume: Float = 0.9, onComplete: @escaping () -> Void = {}) {
-        self.kind = .levelUp(level: level)
+    init(event: LevelUpEvent, fanfareVolume: Float = 0.9, onComplete: @escaping () -> Void = {}) {
+        self.kind = .levelUp(event: event)
         self.fanfareVolume = fanfareVolume
         self.onComplete = onComplete
     }
@@ -40,12 +40,12 @@ struct LevelUpOverlay: View {
             // Future particle effects can be added here without changing callers.
             VStack(spacing: 16) {
                 switch kind {
-                case .levelUp(let level):
+                case .levelUp(let event):
                     Text("LEVEL UP")
                         .font(.system(size: 28, weight: .black, design: .rounded))
                         .foregroundStyle(.white.opacity(0.95))
 
-                    Text("Lv \(level)")
+                    Text("Lv \(event.level)")
                         .font(.system(size: 92, weight: .black, design: .rounded))
                         .foregroundStyle(.yellow)
                         .shadow(color: .yellow.opacity(0.95), radius: 26)
@@ -54,10 +54,10 @@ struct LevelUpOverlay: View {
                         .opacity(levelOpacity)
 
                     VStack(spacing: 6) {
-                        Text("ALL STATS UP")
+                        Text(levelUpSummary(for: event))
                             .font(.system(size: 20, weight: .heavy, design: .rounded))
                             .foregroundStyle(.white)
-                        Text("POWER +2   ENDURANCE +2")
+                        Text(levelUpDetail(for: event))
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                             .foregroundStyle(.yellow)
                     }
@@ -139,5 +139,30 @@ struct LevelUpOverlay: View {
             generator.prepare()
             generator.notificationOccurred(.success)
         }
+    }
+
+    private func levelUpSummary(for event: LevelUpEvent) -> String {
+        switch (event.powerGain > 0, event.enduranceGain > 0) {
+        case (true, true):
+            return "STATS UP"
+        case (true, false):
+            return "POWER UP"
+        case (false, true):
+            return "ENDURANCE UP"
+        case (false, false):
+            return "LEVEL UP"
+        }
+    }
+
+    private func levelUpDetail(for event: LevelUpEvent) -> String {
+        var parts: [String] = []
+        if event.powerGain > 0 {
+            parts.append("POWER +\(event.powerGain)")
+        }
+        if event.enduranceGain > 0 {
+            parts.append("ENDURANCE +\(event.enduranceGain)")
+        }
+
+        return parts.isEmpty ? "次の成長へ進化した" : parts.joined(separator: "   ")
     }
 }

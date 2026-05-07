@@ -38,14 +38,14 @@ struct WorkoutView: View {
     @State private var didSetInitialSheetState = false
     @State private var isExerciseFilterEnabled: Bool
     @State private var isEditingTimer = false
-    @State private var tempMinute = 2
-    @State private var tempSecond = 0
+    @State private var tempMinute = 1
+    @State private var tempSecond = 30
     @FocusState private var focusedInputField: WorkoutInputField?
 
     @StateObject private var viewModel = WorkoutViewModel()
-    @StateObject private var timerVM = IntervalTimerViewModel()
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
     @EnvironmentObject private var monsterManager: MonsterManager
+    @EnvironmentObject private var timerVM: IntervalTimerViewModel
 
     // ✅ 日付タップで履歴へ遷移するためのフラグ
     @State private var showHistory = false
@@ -126,11 +126,6 @@ struct WorkoutView: View {
         _isExerciseFilterEnabled = State(initialValue: initialSelectedExercise != nil)
     }
 
-    private func updateTimerPreview() {
-        guard isEditingTimer else { return }
-        timerVM.remainingSeconds = selectedTimerSeconds
-    }
-
     // MARK: - Body
     var body: some View {
         NavigationStack {
@@ -158,7 +153,6 @@ struct WorkoutView: View {
                             let total = min(timerVM.duration, 3600)
                             tempMinute = total / 60
                             tempSecond = total % 60
-                            timerVM.remainingSeconds = total
                             isEditingTimer = true
                         },
                         onDoneTap: {
@@ -173,9 +167,6 @@ struct WorkoutView: View {
                             if timerVM.isRunning {
                                 timerVM.stop()
                             } else {
-                                if timerVM.remainingTime() == 0 {
-                                    timerVM.reset()
-                                }
                                 timerVM.start()
                             }
                         },
@@ -183,12 +174,6 @@ struct WorkoutView: View {
                             timerVM.reset()
                         }
                     )
-                    .onChange(of: tempMinute) { _, _ in
-                        updateTimerPreview()
-                    }
-                    .onChange(of: tempSecond) { _, _ in
-                        updateTimerPreview()
-                    }
 
                     BodyPartSection(
                         selectedBodyPart: $selectedBodyPart,
@@ -295,8 +280,6 @@ struct WorkoutView: View {
             }
             .onChange(of: userStatusVM.level) { oldLevel, newLevel in
                 viewModel.currentLevel = newLevel
-                guard newLevel > oldLevel else { return }
-                userStatusVM.levelUpEvent = newLevel
             }
 
             // ✅ iOS 16+ 推奨の遷移（deprecated回避）
@@ -969,7 +952,7 @@ private struct InputFormSection: View {
     @ObservedObject private var toastCenter = XPToastCenter.shared
     @ObservedObject private var monsterToastCenter = MonsterUnlockToastCenter.shared
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
-    @State private var levelUpOverlayLevel: Int?
+    @State private var levelUpOverlayEvent: LevelUpEvent?
     @State private var titleUnlockOverlayTitle: Title?
 
     let selectedBodyPart: String
@@ -1145,9 +1128,9 @@ private struct InputFormSection: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
 
-            if let level = levelUpOverlayLevel {
-                LevelUpOverlay(level: level) {
-                    levelUpOverlayLevel = nil
+            if let event = levelUpOverlayEvent {
+                LevelUpOverlay(event: event) {
+                    levelUpOverlayEvent = nil
                 }
                 .zIndex(999)
             } else if let title = titleUnlockOverlayTitle {
@@ -1157,9 +1140,9 @@ private struct InputFormSection: View {
                 .zIndex(998)
             }
         }
-        .onReceive(userStatusVM.$levelUpEvent) { newLevel in
-            guard let level = newLevel else { return }
-            levelUpOverlayLevel = level
+        .onReceive(userStatusVM.$levelUpEvent) { event in
+            guard let event else { return }
+            levelUpOverlayEvent = event
             userStatusVM.levelUpEvent = nil
         }
         .onReceive(userStatusVM.titleManager.$titleUnlockEvent) { unlockedTitle in

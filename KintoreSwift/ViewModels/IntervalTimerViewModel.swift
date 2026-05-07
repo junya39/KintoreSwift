@@ -1,63 +1,57 @@
 import Foundation
+import AVFoundation
 import Combine
 import UIKit
 import UserNotifications
 
 final class IntervalTimerViewModel: ObservableObject {
-    @Published var remainingSeconds: Int
+    @Published private(set) var remainingSeconds: Int
     @Published var isRunning: Bool = false
     @Published var duration: Int
 
     private var timer: AnyCancellable?
-    private(set) var endDate: Date?
+    private var audioPlayer: AVAudioPlayer?
+    private var endDate: Date?
     private let timerNotificationId = "workout_timer"
 
-    init(duration: Int = 120) {
+    init(duration: Int = 90) {
         self.duration = duration
         self.remainingSeconds = duration
     }
 
     func start() {
-        let seconds = remainingSeconds > 0 ? remainingSeconds : duration
-        remainingSeconds = seconds
-        endDate = Date().addingTimeInterval(TimeInterval(seconds))
-        startTimer()
+        guard isRunning == false else { return }
+        if remainingSeconds == 0 {
+            remainingSeconds = duration
+        }
+        endDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
+        isRunning = true
+        startTicker()
+        scheduleTimerNotification(seconds: remainingSeconds)
     }
 
     func remainingTime() -> Int {
-        guard let endDate else { return 0 }
-        return max(0, Int(endDate.timeIntervalSinceNow))
+        guard let endDate else { return remainingSeconds }
+        return max(0, Int(ceil(endDate.timeIntervalSinceNow)))
     }
 
     func startTimerIfNeeded() {
-        guard endDate != nil else { return }
-        startTimer()
+        refreshRemainingSeconds()
+        guard isRunning, timer == nil else { return }
+        startTicker()
     }
 
-    private func startTimer() {
+    private func startTicker() {
         timer?.cancel()
         timer = nil
-        let seconds = remainingTime()
-        remainingSeconds = seconds
-        guard seconds > 0 else {
-            stop(cancelNotification: false)
-            return
-        }
-        isRunning = true
-        scheduleTimerNotification(seconds: seconds)
         timer = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self else { return }
-                guard self.endDate != nil else {
-                    self.stop(cancelNotification: false)
-                    return
-                }
-
-                self.remainingSeconds = self.remainingTime()
-
+                self.refreshRemainingSeconds()
                 if self.remainingSeconds == 0 {
                     self.stop(cancelNotification: false)
+                    self.playTimerSoundIfAvailable()
                     let generator = UINotificationFeedbackGenerator()
                     generator.prepare()
                     generator.notificationOccurred(.warning)
@@ -66,7 +60,7 @@ final class IntervalTimerViewModel: ObservableObject {
     }
 
     func stop(cancelNotification: Bool = true) {
-        remainingSeconds = remainingTime()
+        refreshRemainingSeconds()
         timer?.cancel()
         timer = nil
         isRunning = false
@@ -78,8 +72,11 @@ final class IntervalTimerViewModel: ObservableObject {
 
     func reset() {
         stop()
-        endDate = nil
         remainingSeconds = duration
+    }
+
+    private func refreshRemainingSeconds() {
+        remainingSeconds = remainingTime()
     }
 
     private func scheduleTimerNotification(seconds: Int) {
@@ -115,5 +112,26 @@ final class IntervalTimerViewModel: ObservableObject {
     private func cancelTimerNotification() {
         UNUserNotificationCenter.current()
             .removePendingNotificationRequests(withIdentifiers: [timerNotificationId])
+    }
+
+    private func playTimerSoundIfAvailable() {
+        guard let url = Bundle.main.url(
+            forResource: "kintore_timer_competition",
+            withExtension: "wav"
+        ) else { return }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default)
+            try session.setActive(true)
+
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.volume = 1.0
+            player.prepareToPlay()
+            player.play()
+            audioPlayer = player
+        } catch {
+            print("Timer sound playback error: \(error)")
+        }
     }
 }

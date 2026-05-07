@@ -14,14 +14,34 @@ final class TitleManager: ObservableObject {
         self.equippedTitleId = equippedTitleId
     }
 
-    func evaluateTitles(powerLevel: Int, enduranceLevel: Int, totalLevel: Int) {
+    func evaluateTitles(
+        powerLevel: Int,
+        enduranceLevel: Int,
+        totalLevel: Int,
+        showUnlockToast: Bool = false
+    ) {
         _ = totalLevel // SQLite永続化追加時に保存条件へ利用しやすい受け口を維持
         let diff = powerLevel - enduranceLevel
         let unlockDate = Date()
 
-        unlockIfNeeded(id: "brute", condition: diff >= 10, unlockDate: unlockDate)
-        unlockIfNeeded(id: "stoic", condition: diff <= -10, unlockDate: unlockDate)
-        unlockIfNeeded(id: "balanced", condition: abs(diff) <= 5, unlockDate: unlockDate)
+        unlockIfNeeded(
+            id: "brute",
+            condition: diff >= 10,
+            unlockDate: unlockDate,
+            showUnlockToast: showUnlockToast
+        )
+        unlockIfNeeded(
+            id: "stoic",
+            condition: diff <= -10,
+            unlockDate: unlockDate,
+            showUnlockToast: showUnlockToast
+        )
+        unlockIfNeeded(
+            id: "balanced",
+            condition: abs(diff) <= 5,
+            unlockDate: unlockDate,
+            showUnlockToast: showUnlockToast
+        )
     }
 
     func equip(titleId: String) {
@@ -46,13 +66,20 @@ final class TitleManager: ObservableObject {
         }
     }
 
-    private func unlockIfNeeded(id: String, condition: Bool, unlockDate: Date) {
+    private func unlockIfNeeded(
+        id: String,
+        condition: Bool,
+        unlockDate: Date,
+        showUnlockToast: Bool
+    ) {
         guard condition, let index = titles.firstIndex(where: { $0.id == id }) else { return }
         guard titles[index].isUnlocked == false else { return }
 
         titles[index].isUnlocked = true
         titles[index].unlockedDate = unlockDate
-        titleUnlockEvent = titles[index]
+        if showUnlockToast {
+            titleUnlockEvent = titles[index]
+        }
     }
 
     private static let defaultTitles: [Title] = [
