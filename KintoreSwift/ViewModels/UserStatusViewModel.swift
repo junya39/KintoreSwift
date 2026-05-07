@@ -1,6 +1,12 @@
 import Foundation
 import SwiftUI
 
+struct LevelUpEvent: Equatable {
+    let level: Int
+    let powerGain: Int
+    let enduranceGain: Int
+}
+
 final class UserStatusViewModel: ObservableObject {
     @Published var level: Int { didSet { persistIfNeeded() } }
     @Published var currentXP: Int { didSet { persistIfNeeded() } }
@@ -8,12 +14,13 @@ final class UserStatusViewModel: ObservableObject {
     @Published var endurance: Int { didSet { persistIfNeeded() } }
     @Published var lastGainedXP: Int = 0
     @Published var didLevelUp: Bool = false
-    @Published var levelUpEvent: Int?
+    @Published var levelUpEvent: LevelUpEvent?
     @Published var titleManager = TitleManager()
 
     // 種目ごとの基準値（将来の永続化対象）
     @Published private(set) var baselines: [String: Double] { didSet { persistIfNeeded() } }
     private var isHydrating = true
+    private var pendingLevelUpLevel: Int?
 
     init(
         level: Int = 1,
@@ -39,12 +46,14 @@ final class UserStatusViewModel: ObservableObject {
         titleManager.evaluateTitles(
             powerLevel: resolvedPower,
             enduranceLevel: resolvedEndurance,
-            totalLevel: resolvedLevel
+            totalLevel: resolvedLevel,
+            showUnlockToast: false
         )
     }
 
-    func addXP(volume: Double, exerciseId: String, baseXPOverride: Double? = nil) {
-        guard volume > 0, !exerciseId.isEmpty else { return }
+    @discardableResult
+    func addXP(volume: Double, exerciseId: String, baseXPOverride: Double? = nil) -> Int {
+        guard volume > 0, !exerciseId.isEmpty else { return 0 }
 
         let baseXP = max(0, baseXPOverride ?? sqrt(volume))
 
@@ -66,15 +75,28 @@ final class UserStatusViewModel: ObservableObject {
         while currentXP >= requiredXP(for: level) {
             currentXP -= requiredXP(for: level)
             level += 1
-            levelUpEvent = level
+            pendingLevelUpLevel = level
             didLevelUp = true
         }
 
         titleManager.evaluateTitles(
             powerLevel: power,
             enduranceLevel: endurance,
-            totalLevel: level
+            totalLevel: level,
+            showUnlockToast: false
         )
+
+        return gainedXP
+    }
+
+    func publishPendingLevelUpIfNeeded(powerGain: Int, enduranceGain: Int) {
+        guard let pendingLevelUpLevel else { return }
+        levelUpEvent = LevelUpEvent(
+            level: pendingLevelUpLevel,
+            powerGain: max(0, powerGain),
+            enduranceGain: max(0, enduranceGain)
+        )
+        self.pendingLevelUpLevel = nil
     }
 
     func requiredXP(for level: Int) -> Int {

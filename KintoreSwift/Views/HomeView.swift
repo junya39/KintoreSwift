@@ -12,7 +12,9 @@ struct HomeView: View {
     @State private var showMonsterSelection = false
     @State private var selectedBodyPart = "胸"
     @State private var selectedExercise = ""
+    @State private var showExercisePickerSheet = false
     @State private var showAddExerciseSheet = false
+    @State private var buddyMemo = ""
 
     private let bodyPartOrder = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
     private static let homeDateFormatter: DateFormatter = {
@@ -87,6 +89,19 @@ struct HomeView: View {
         }
     }
 
+    private func refreshBuddyMemo() {
+        buddyMemo = BuddyMemoGenerator.generate(
+            monsterName: monsterManager.buddyMonster?.name,
+            hasUnlockedMonsters: monsterManager.unlockedMonsters.isEmpty == false,
+            todaySetCount: homeMetrics.todaySetCount,
+            streakDays: homeMetrics.streakDays,
+            totalVolume: homeMetrics.totalVolume,
+            level: userStatusVM.level,
+            remainingXP: max(userStatusVM.requiredXP(for: userStatusVM.level) - userStatusVM.currentXP, 0),
+            isLevelUpEvent: viewModel.currentLogEvent == .levelUp
+        )
+    }
+
     private func threeDayStreakProgress() -> Int {
         let calendar = Calendar.current
         let workoutDays = Set(viewModel.entries.map { calendar.startOfDay(for: $0.date) })
@@ -155,6 +170,7 @@ struct HomeView: View {
                         requiredXP: userStatusVM.requiredXP(for: userStatusVM.level),
                         power: userStatusVM.power,
                         endurance: userStatusVM.endurance,
+                        buddyMemo: buddyMemo,
                         nextEncounter: nextMonsterEncounter,
                         onSelectBuddy: {
                             showMonsterSelection = true
@@ -175,51 +191,44 @@ struct HomeView: View {
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.72))
 
-                        Menu {
+                        HStack(spacing: 10) {
                             Button {
-                                showAddExerciseSheet = true
+                                showExercisePickerSheet = true
                             } label: {
-                                Label("種目を追加", systemImage: "plus")
-                            }
-
-                                Divider()
-
-                                ForEach(bodyPartOrder, id: \.self) { part in
-                                    let exercises = viewModel.exercises[part] ?? []
-                                    if !exercises.isEmpty {
-                                        Section(part) {
-                                            ForEach(exercises, id: \.self) { exercise in
-                                                Button {
-                                                    selectedBodyPart = part
-                                                    selectedExercise = exercise
-                                                } label: {
-                                                    Text(exercise)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                        } label: {
-                            HStack {
-                                Text(selectedBodyPart)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundColor(.green)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.green.opacity(0.15))
-                                    .clipShape(Capsule())
-
+                                HStack {
+                                    Text(selectedBodyPart)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundColor(.green)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(Color.green.opacity(0.15))
+                                        .clipShape(Capsule())
+                                    
                                     Text(selectedExercise.isEmpty ? "種目を選択" : selectedExercise)
                                         .font(.headline)
                                         .foregroundColor(.white)
                                         .lineLimit(1)
-
+                                    
                                     Spacer()
-
+                                    
                                     Image(systemName: "chevron.down")
                                         .font(.caption.bold())
                                         .foregroundColor(.white.opacity(0.85))
+                                }
                             }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                showAddExerciseSheet = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundColor(.black)
+                                    .frame(width: 34, height: 34)
+                                    .background(Color.accent)
+                                    .clipShape(Circle())
+                            }
+                            .accessibilityLabel("新しい種目を追加")
                         }
 
                         HStack {
@@ -291,13 +300,31 @@ struct HomeView: View {
             .onAppear {
                 viewModel.loadInitialData()
                 normalizeSelection()
+                refreshBuddyMemo()
             }
             .onChange(of: selectedBodyPart) { _, _ in
                 normalizeSelection()
             }
+            .onChange(of: viewModel.entries.count) { _, _ in
+                refreshBuddyMemo()
+            }
+            .onChange(of: monsterManager.buddyMonster?.id) { _, _ in
+                refreshBuddyMemo()
+            }
+            .sheet(isPresented: $showExercisePickerSheet) {
+                HomeExercisePickerSheet(
+                    exercises: viewModel.exercises,
+                    bodyPartOrder: bodyPartOrder
+                ) { bodyPart, exercise in
+                    selectedBodyPart = bodyPart
+                    selectedExercise = exercise
+                }
+                .preferredColorScheme(.dark)
+            }
             .sheet(isPresented: $showAddExerciseSheet, onDismiss: {
                 viewModel.loadInitialData()
                 normalizeSelection()
+                refreshBuddyMemo()
             }) {
                 HomeAddExerciseView(
                     initialBodyPart: selectedBodyPart,
@@ -326,6 +353,7 @@ private struct BuddyMonsterSection: View {
     let requiredXP: Int
     let power: Int
     let endurance: Int
+    let buddyMemo: String
     let nextEncounter: NextMonsterEncounter
     let onSelectBuddy: () -> Void
 
@@ -376,7 +404,7 @@ private struct BuddyMonsterSection: View {
             .frame(maxWidth: .infinity)
             .padding(.top, -4)
 
-            MonsterMessageView(buddyMonster: buddyMonster, hasUnlockedMonsters: hasUnlockedMonsters)
+            MonsterMessageView(message: buddyMemo)
 
             MonsterStatusStrip(
                 level: level,
@@ -433,16 +461,94 @@ private struct NextEncounterCard: View {
     }
 }
 
-private struct MonsterMessageView: View {
-    let buddyMonster: Monster?
-    let hasUnlockedMonsters: Bool
-
-    private var message: String {
-        if let buddyMonster {
-            return "\(buddyMonster.name)がじっとこちらを見ている。\nまだ動く気はあるらしい。"
+private enum BuddyMemoGenerator {
+    static func generate(
+        monsterName: String?,
+        hasUnlockedMonsters: Bool,
+        todaySetCount: Int,
+        streakDays: Int,
+        totalVolume: Int,
+        level: Int,
+        remainingXP: Int,
+        isLevelUpEvent: Bool
+    ) -> String {
+        guard let monsterName else {
+            return hasUnlockedMonsters
+                ? "相棒にしたいモンスターがこちらを見ている。"
+                : "まだ見ぬモンスターの気配がする。最初の記録を待っている。"
         }
-        return hasUnlockedMonsters ? "相棒にしたいモンスターがこちらを見ている。\n声をかければついてきそうだ。" : "まだ見ぬモンスターの気配がする。\n最初の記録を待っている。"
+
+        if isLevelUpEvent {
+            return [
+                "\(monsterName)は、Lv\(level)になったあなたを誇らしげに見ている。",
+                "\(monsterName)は、新しいレベルまで来た努力をちゃんと覚えている。",
+                "\(monsterName)は、成長したあなたを静かに見守っている。"
+            ].randomElement() ?? fallback(monsterName: monsterName)
+        }
+
+        var candidates: [String] = []
+
+        if todaySetCount == 0 {
+            candidates.append(contentsOf: [
+                "\(monsterName)は、今日の最初の1セットを待っている。",
+                "\(monsterName)は、まだ今日の記録がないことに気づいている。",
+                "\(monsterName)は、今日のスタートを静かに待っている。"
+            ])
+        } else {
+            candidates.append(contentsOf: [
+                "\(monsterName)は、今日の\(todaySetCount)セットをちゃんと覚えている。",
+                "\(monsterName)は、今日積み上げた\(todaySetCount)セットを見てうなずいている。",
+                "\(monsterName)は、今日の\(todaySetCount)セット分だけあなたが進んだことを知っている。"
+            ])
+        }
+
+        if streakDays >= 2 {
+            candidates.append(contentsOf: [
+                "\(monsterName)は、\(streakDays)日連続の努力を見逃していない。",
+                "\(monsterName)は、\(streakDays)日連続で続いていることを覚えている。",
+                "\(monsterName)は、\(streakDays)日続けたあなたを誇らしげに見ている。"
+            ])
+        }
+
+        if totalVolume >= 1 {
+            let volumeText = totalVolume.formatted()
+            candidates.append(contentsOf: [
+                "\(monsterName)は、これまでに\(volumeText)kg分の努力を見てきた。",
+                "\(monsterName)は、積み上げた\(volumeText)kgの重みを知っている。",
+                "\(monsterName)は、あなたが動かしてきた\(volumeText)kgを覚えている。"
+            ])
+        }
+
+        candidates.append(contentsOf: [
+            "\(monsterName)は、Lv\(level)まで来たあなたを見ている。",
+            "\(monsterName)は、Lv\(level)の努力をちゃんと覚えている。",
+            "\(monsterName)は、次のレベルまであと\(remainingXP.formatted())XPだと知っている。"
+        ])
+
+        candidates.append(contentsOf: [
+            "\(monsterName)がじっとこちらを見ている。",
+            "\(monsterName)は今日のトレーニングを待っている。",
+            "\(monsterName)が小さくうなずいた。",
+            "\(monsterName)は少しだけ強くなった気がする。",
+            "\(monsterName)はバーベルを見つめている。",
+            "\(monsterName)はまだ本気を出していない。",
+            "\(monsterName)がこちらに気合いを送っている。",
+            "\(monsterName)は次のセットを楽しみにしている。",
+            "\(monsterName)は静かに燃えている。",
+            "\(monsterName)は今日も成長したがっている。"
+        ])
+
+        return candidates.randomElement() ?? fallback(monsterName: monsterName)
     }
+
+    static func fallback(monsterName: String?) -> String {
+        guard let monsterName else { return "相棒がこちらを見ている。" }
+        return "\(monsterName)がこちらを見ている。"
+    }
+}
+
+private struct MonsterMessageView: View {
+    let message: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -450,7 +556,7 @@ private struct MonsterMessageView: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(.white.opacity(0.55))
 
-            Text(message)
+            Text(message.isEmpty ? BuddyMemoGenerator.fallback(monsterName: nil) : message)
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white.opacity(0.9))
                 .multilineTextAlignment(.leading)
@@ -548,7 +654,7 @@ private struct MonsterBuddySelectionView: View {
                                 MonsterThumbnailView(monster: monster)
 
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("\(monster.displayNumber) \(monster.name)")
+                                    Text(monster.name)
                                         .font(.headline)
                                     Text(monster.description)
                                         .font(.caption)
@@ -766,6 +872,137 @@ private struct DebugEvolutionPanelView: View {
 }
 #endif
 
+private struct HomeExercisePickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let exercises: [String: [String]]
+    let bodyPartOrder: [String]
+    let onSelect: (String, String) -> Void
+
+    @State private var searchText = ""
+
+    private var normalizedSearchText: String {
+        searchText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    private var filteredSections: [(bodyPart: String, exercises: [String])] {
+        bodyPartOrder.compactMap { bodyPart in
+            let bodyPartExercises = exercises[bodyPart] ?? []
+            let filteredExercises: [String]
+            if normalizedSearchText.isEmpty {
+                filteredExercises = bodyPartExercises
+            } else {
+                filteredExercises = bodyPartExercises.filter {
+                    $0.lowercased().contains(normalizedSearchText)
+                }
+            }
+
+            guard filteredExercises.isEmpty == false else { return nil }
+            return (bodyPart, filteredExercises)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(alignment: .leading, spacing: 14) {
+                    searchField
+
+                    if filteredSections.isEmpty {
+                        Text("該当する種目がありません")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white.opacity(0.62))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 18) {
+                                ForEach(filteredSections, id: \.bodyPart) { section in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text(section.bodyPart)
+                                            .font(.caption.weight(.bold))
+                                            .foregroundColor(.green)
+                                            .padding(.horizontal, 4)
+
+                                        VStack(spacing: 8) {
+                                            ForEach(section.exercises, id: \.self) { exercise in
+                                                Button {
+                                                    onSelect(section.bodyPart, exercise)
+                                                    dismiss()
+                                                } label: {
+                                                    HStack {
+                                                        Text(exercise)
+                                                            .font(.subheadline.weight(.semibold))
+                                                            .foregroundColor(.white)
+                                                            .multilineTextAlignment(.leading)
+                                                        Spacer()
+                                                        Image(systemName: "plus.circle.fill")
+                                                            .foregroundColor(.green)
+                                                    }
+                                                    .padding(.vertical, 12)
+                                                    .padding(.horizontal, 14)
+                                                    .background(Color.card)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.bottom, 18)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+            }
+            .navigationTitle("種目を追加")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.white.opacity(0.55))
+
+            TextField("種目を検索", text: $searchText)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                .foregroundColor(.white)
+
+            if searchText.isEmpty == false {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .background(Color.white.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
 private struct HomeAddExerciseView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -789,7 +1026,7 @@ private struct HomeAddExerciseView: View {
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
             }
-            .navigationTitle("種目を追加")
+            .navigationTitle("新しい種目を追加")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") {

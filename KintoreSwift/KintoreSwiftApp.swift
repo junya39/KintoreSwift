@@ -8,6 +8,7 @@ import UserNotifications
 struct KintoreSwiftApp: App {
     @StateObject private var userStatusVM = UserStatusViewModel()
     @StateObject private var monsterManager = MonsterManager()
+    @StateObject private var workoutTimerVM = IntervalTimerViewModel()
 
     init() {
         configureAudioSession()
@@ -19,6 +20,7 @@ struct KintoreSwiftApp: App {
             ContentView()
                 .environmentObject(userStatusVM)
                 .environmentObject(monsterManager)
+                .environmentObject(workoutTimerVM)
         }
     }
 

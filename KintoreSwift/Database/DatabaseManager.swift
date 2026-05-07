@@ -8,6 +8,33 @@ final class DatabaseManager {
     static let shared = DatabaseManager()
     private var db: OpaquePointer?
 
+    private let defaultExerciseCatalog: [(bodyPart: String, names: [String])] = [
+        ("胸", ["ベンチプレス", "インクラインベンチプレス", "ダンベルプレス", "ペクトラルフライ", "ケーブルクロスオーバー"]),
+        ("背中", ["ラットプルダウン", "シーテッドロー", "ワンハンドロー", "チンニング", "デッドリフト"]),
+        ("脚", ["スクワット", "レッグプレス", "レッグエクステンション", "レッグカール", "ブルガリアンスクワット"]),
+        ("肩", ["ショルダープレス", "サイドレイズ", "リアレイズ", "フロントレイズ", "アーノルドプレス"]),
+        ("腕", ["アームカール", "ハンマーカール", "トライセプスプレスダウン", "ディップス", "オーバーヘッドエクステンション"]),
+        ("腹筋", ["クランチ", "レッグレイズ", "アブローラー", "プランク", "ケーブルクランチ"])
+    ]
+
+    private var defaultExerciseNames: Set<String> {
+        Set(defaultExerciseCatalog.flatMap { $0.names })
+    }
+
+    private let legacyDefaultExerciseNames: Set<String> = [
+        "ペクトラル",
+        "インクラインダンベルプレス",
+        "ケーブルだっちゅーの",
+        "Tバーロウ",
+        "Tバーロウ（バーベル）",
+        "ラットプル（ナロー）",
+        "ラットプルダウン（ナロー）",
+        "プーリーロウ",
+        "アダクター",
+        "インクラインアームカール",
+        "ワンハンドオーバーエクステンション"
+    ]
+
     private init() {
         openDatabase()
         createTables()
@@ -79,6 +106,7 @@ final class DatabaseManager {
 
         createExerciseTableIfNeeded()
         createDeletedExerciseTableIfNeeded()
+        migrateDefaultExercisesIfNeeded()
         createUserStatusTableIfNeeded()
     }
 
@@ -144,6 +172,106 @@ final class DatabaseManager {
         } else {
             print("✅ deleted_exercises テーブル確認完了")
         }
+    }
+
+    private func migrateDefaultExercisesIfNeeded() {
+        guard db != nil else { return }
+
+        for name in legacyDefaultExerciseNames where !defaultExerciseNames.contains(name) {
+            deleteExerciseRow(named: name)
+        }
+
+        for item in defaultExerciseCatalog {
+            for name in item.names {
+                removeDeletedExerciseMark(named: name)
+                ensureExerciseExists(name: name, bodyPart: item.bodyPart)
+            }
+        }
+    }
+
+    private func deleteExerciseRow(named name: String) {
+        let query = "DELETE FROM exercises WHERE name = ?;"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (name as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    private func removeDeletedExerciseMark(named name: String) {
+        let query = "DELETE FROM deleted_exercises WHERE name = ?;"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (name as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    private func ensureExerciseExists(name: String, bodyPart: String) {
+        let ids = fetchExerciseIDs(named: name)
+
+        if let firstID = ids.first {
+            updateExercise(id: firstID, bodyPart: bodyPart)
+            deleteDuplicateExerciseRows(named: name, keeping: firstID)
+        } else {
+            insertDefaultExercise(name: name, bodyPart: bodyPart)
+        }
+    }
+
+    private func fetchExerciseIDs(named name: String) -> [Int] {
+        let query = "SELECT id FROM exercises WHERE name = ? ORDER BY id ASC;"
+        var stmt: OpaquePointer?
+        var ids: [Int] = []
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (name as NSString).utf8String, -1, nil)
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                ids.append(Int(sqlite3_column_int(stmt, 0)))
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        return ids
+    }
+
+    private func updateExercise(id: Int, bodyPart: String) {
+        let query = "UPDATE exercises SET bodyPart = ? WHERE id = ?;"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (bodyPart as NSString).utf8String, -1, nil)
+            sqlite3_bind_int(stmt, 2, Int32(id))
+            _ = sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    private func deleteDuplicateExerciseRows(named name: String, keeping id: Int) {
+        let query = "DELETE FROM exercises WHERE name = ? AND id != ?;"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (name as NSString).utf8String, -1, nil)
+            sqlite3_bind_int(stmt, 2, Int32(id))
+            _ = sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    private func insertDefaultExercise(name: String, bodyPart: String) {
+        let query = "INSERT INTO exercises (name, bodyPart) VALUES (?, ?);"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (name as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 2, (bodyPart as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
     }
 
     func createUserStatusTableIfNeeded() {
@@ -302,25 +430,26 @@ final class DatabaseManager {
         }
         sqlite3_finalize(stmt)
 
-        // 初期値（デフォルト種目）
-        let defaults: [String: [String]] = [
-            "胸": ["ベンチプレス", "インクラインベンチプレス", "ケーブルだっちゅーの"],
-            "背中": ["チンニング", "ワンハンドロー", "Tバーロウ", "ラットプルダウン（ナロー）"],
-            "脚": ["スクワット", "ブルガリアンスクワット", "レッグプレス", "アダクター"],
-            "肩": ["ショルダープレス", "サイドレイズ", "リアレイズ"],
-            "腕": ["インクラインアームカール", "ハンマーカール", "ディップス", "ワンハンドオーバーエクステンション"],
-            "腹筋": ["クランチ", "レッグレイズ", "アブローラー"]
-        ]
+        return sortedExercisesByDefaultOrder(result)
+    }
 
-        for (part, items) in defaults {
-            var merged = result[part] ?? []
-            for item in items where !merged.contains(item) && !deletedNames.contains(item) {
-                merged.append(item)
+    private func sortedExercisesByDefaultOrder(_ exercises: [String: [String]]) -> [String: [String]] {
+        var sorted = exercises
+
+        for item in defaultExerciseCatalog {
+            let order = Dictionary(uniqueKeysWithValues: item.names.enumerated().map { ($0.element, $0.offset) })
+            sorted[item.bodyPart] = (sorted[item.bodyPart] ?? []).sorted {
+                let lhsIndex = order[$0] ?? Int.max
+                let rhsIndex = order[$1] ?? Int.max
+
+                if lhsIndex != rhsIndex {
+                    return lhsIndex < rhsIndex
+                }
+                return $0.localizedStandardCompare($1) == .orderedAscending
             }
-            result[part] = merged
         }
 
-        return result
+        return sorted
     }
 
     func fetchDeletedExerciseNames() -> Set<String> {

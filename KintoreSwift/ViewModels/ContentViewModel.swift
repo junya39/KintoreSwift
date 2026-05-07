@@ -4,6 +4,14 @@ import SwiftUI
 import Foundation
 
 class ContentViewModel: ObservableObject {
+    private enum GrowthType {
+        case ultraPower
+        case power
+        case balanced
+        case endurance
+        case ultraEndurance
+    }
+
     enum PostSaveSideAction {
         case switchToLeft
         case switchToRight
@@ -19,6 +27,7 @@ class ContentViewModel: ObservableObject {
     }
 
     struct HomeMetrics {
+        let todaySetCount: Int
         let totalVolume: Int
         let streakDays: Int
     }
@@ -162,26 +171,46 @@ class ContentViewModel: ObservableObject {
         )
 
         if shouldGrantXP(for: side, exercise: exercise) {
-            // 保存完了後に、今回セットのボリューム分XPを加算
-            let totalVolume = max(0, weight) * Double(reps)
+            // 保存完了後に、今回セットの負荷分XPを加算
+            let isBodyweight = weight == 0
+            let trainingLoad = xpTrainingLoad(
+                weight: weight,
+                reps: reps,
+                isBodyweight: isBodyweight
+            )
             if let userStatusVM {
-                let xpType = xpType(for: bodyPart)
-                let baseXP = sqrt(totalVolume)
+                let growthType = growthType(for: reps)
+                let ratio = statRatio(for: growthType)
+                let xpType = xpType(for: ratio, bodyPart: bodyPart)
+                let recordMultiplier = isBodyweight && isRepRecord ? 1.15 : 1.0
+                let baseXP = baseXPValue(
+                    trainingLoad: trainingLoad,
+                    reps: reps,
+                    isBodyweight: isBodyweight
+                ) * recordMultiplier
                 let adjustedBaseXP = userStatusVM.titleManager.applyBonus(
                     baseXP: baseXP,
                     type: xpType
                 )
-                let subXP = adjustedBaseXP * 0.3
-                userStatusVM.addXP(
-                    volume: totalVolume,
+                let gainedXP = userStatusVM.addXP(
+                    volume: trainingLoad,
                     exerciseId: exercise,
                     baseXPOverride: adjustedBaseXP
                 )
-                applySubXP(
-                    subXP: subXP,
-                    weight: weight,
-                    reps: reps,
+                let statGain = applyWorkoutGrowth(
+                    gainedXP: gainedXP,
+                    ratio: ratio,
                     userStatusVM: userStatusVM
+                )
+                userStatusVM.publishPendingLevelUpIfNeeded(
+                    powerGain: statGain.power,
+                    enduranceGain: statGain.endurance
+                )
+                userStatusVM.titleManager.evaluateTitles(
+                    powerLevel: userStatusVM.power,
+                    enduranceLevel: userStatusVM.endurance,
+                    totalLevel: userStatusVM.level,
+                    showUnlockToast: true
                 )
             }
         }
@@ -227,7 +256,71 @@ class ContentViewModel: ObservableObject {
         return false
     }
 
-    private func xpType(for bodyPart: String) -> TitleEffectType {
+    private func xpTrainingLoad(
+        weight: Double,
+        reps: Int,
+        isBodyweight: Bool
+    ) -> Double {
+        if isBodyweight {
+            return max(0, Double(reps))
+        }
+
+        return max(0, weight) * Double(reps)
+    }
+
+    private func baseXPValue(
+        trainingLoad: Double,
+        reps: Int,
+        isBodyweight: Bool
+    ) -> Double {
+        if isBodyweight {
+            return min(max(0, Double(reps)) * 0.8, 45)
+        }
+
+        return sqrt(trainingLoad)
+    }
+
+    private func growthType(for reps: Int) -> GrowthType {
+        switch reps {
+        case 1...3:
+            return .ultraPower
+        case 4...8:
+            return .power
+        case 9...12:
+            return .balanced
+        case 13...17:
+            return .endurance
+        default:
+            return .ultraEndurance
+        }
+    }
+
+    private func statRatio(for growthType: GrowthType) -> (power: Double, endurance: Double) {
+        switch growthType {
+        case .ultraPower:
+            return (1.0, 0.0)
+        case .power:
+            return (0.8, 0.2)
+        case .balanced:
+            return (0.5, 0.5)
+        case .endurance:
+            return (0.2, 0.8)
+        case .ultraEndurance:
+            return (0.0, 1.0)
+        }
+    }
+
+    private func xpType(
+        for ratio: (power: Double, endurance: Double),
+        bodyPart: String
+    ) -> TitleEffectType {
+        if ratio.power > ratio.endurance {
+            return .powerXP
+        }
+        if ratio.endurance > ratio.power {
+            return .enduranceXP
+        }
+
         switch bodyPart {
         case "脚", "腹筋":
             return .enduranceXP
@@ -236,46 +329,31 @@ class ContentViewModel: ObservableObject {
         }
     }
 
-    private func applySubXP(
-        subXP: Double,
-        weight: Double,
-        reps: Int,
+    private func applyWorkoutGrowth(
+        gainedXP: Int,
+        ratio: (power: Double, endurance: Double),
         userStatusVM: UserStatusViewModel
-    ) {
-        guard subXP > 0 else { return }
+    ) -> (power: Int, endurance: Int) {
+        guard gainedXP > 0 else { return (0, 0) }
 
-        let powerDelta: Double
-        let enduranceDelta: Double
+        let powerGain = Int((Double(gainedXP) * ratio.power).rounded())
+        let enduranceGain = Int((Double(gainedXP) * ratio.endurance).rounded())
 
-        if weight == 0 {
-            powerDelta = 0
-            enduranceDelta = subXP
-        } else if reps <= 8 {
-            powerDelta = subXP
-            enduranceDelta = 0
-        } else if reps >= 15 {
-            powerDelta = 0
-            enduranceDelta = subXP
-        } else {
-            powerDelta = subXP * 0.5
-            enduranceDelta = subXP * 0.5
+        if powerGain > 0 {
+            userStatusVM.power = max(0, userStatusVM.power + powerGain)
         }
-
-        let statCap = max(0, userStatusVM.level)
-        if powerDelta > 0 {
-            let nextPower = userStatusVM.power + Int(powerDelta.rounded())
-            userStatusVM.power = min(statCap, max(0, nextPower))
-        }
-        if enduranceDelta > 0 {
-            let nextEndurance = userStatusVM.endurance + Int(enduranceDelta.rounded())
-            userStatusVM.endurance = min(statCap, max(0, nextEndurance))
+        if enduranceGain > 0 {
+            userStatusVM.endurance = max(0, userStatusVM.endurance + enduranceGain)
         }
 
         userStatusVM.titleManager.evaluateTitles(
             powerLevel: userStatusVM.power,
             enduranceLevel: userStatusVM.endurance,
-            totalLevel: userStatusVM.level
+            totalLevel: userStatusVM.level,
+            showUnlockToast: false
         )
+
+        return (powerGain, enduranceGain)
     }
 
     func postSaveSideAction(for currentSide: String) -> PostSaveSideAction {
@@ -399,10 +477,16 @@ class ContentViewModel: ObservableObject {
     }
 
     var homeMetrics: HomeMetrics {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let todaySetCount = entries.filter {
+            calendar.startOfDay(for: $0.date) == today
+        }.count
         let totalVolume = Int(entries.reduce(0) { $0 + ($1.weight * Double($1.reps)) })
         let streakDays = calculateStreakDays()
 
         return HomeMetrics(
+            todaySetCount: todaySetCount,
             totalVolume: totalVolume,
             streakDays: streakDays
         )
