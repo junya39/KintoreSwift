@@ -121,9 +121,7 @@ final class IntervalTimerViewModel: ObservableObject {
         ) else { return }
 
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default)
-            try session.setActive(true)
+            TimerAudioSession.configure()
 
             let player = try AVAudioPlayer(contentsOf: url)
             player.volume = 1.0
