@@ -60,6 +60,10 @@ enum TimerAudioSession {
     }
 }
 
+enum TimerNotificationConstants {
+    static let requestId = "workout_timer"
+}
+
 private final class TimerNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = TimerNotificationDelegate()
 
@@ -68,6 +72,11 @@ private final class TimerNotificationDelegate: NSObject, UNUserNotificationCente
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        if notification.request.identifier == TimerNotificationConstants.requestId {
+            completionHandler([.banner])
+            return
+        }
+
         completionHandler([.banner, .sound])
     }
 }

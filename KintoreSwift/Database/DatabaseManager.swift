@@ -519,11 +519,12 @@ final class DatabaseManager {
         reps: Int,
         note: String?,
         side: String? = nil
-    ) {
-        guard db != nil else { return }
+    ) -> Bool {
+        guard db != nil else { return false }
 
         let query = "INSERT INTO sets (date, bodyPart, exercise, weight, reps, note, side) VALUES (?, ?, ?, ?, ?, ?, ?);"
         var stmt: OpaquePointer?
+        var didInsert = false
 
         if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
             // ✅ 保存は必ず isoFormatter に統一
@@ -549,11 +550,13 @@ final class DatabaseManager {
 
             if sqlite3_step(stmt) == SQLITE_DONE {
                 print("✅ セット追加完了 (\(exercise), side: \(side ?? "nil"))")
+                didInsert = true
             } else {
                 print("❌ セット追加失敗")
             }
         }
         sqlite3_finalize(stmt)
+        return didInsert
     }
 
     // MARK: - 全データ取得

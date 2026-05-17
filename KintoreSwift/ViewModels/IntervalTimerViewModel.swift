@@ -12,11 +12,21 @@ final class IntervalTimerViewModel: ObservableObject {
     private var timer: AnyCancellable?
     private var audioPlayer: AVAudioPlayer?
     private var endDate: Date?
-    private let timerNotificationId = "workout_timer"
+    private var lifecycleObservers: [NSObjectProtocol] = []
+    private var wasAwayFromForeground = false
+    private var didExpireWhileInactive = false
+    private var shouldSuppressNextInAppCompletionSound = false
+    private var hasHandledCurrentTimerCompletion = false
+    private let timerNotificationId = TimerNotificationConstants.requestId
 
     init(duration: Int = 90) {
         self.duration = duration
         self.remainingSeconds = duration
+        observeAppLifecycle()
+    }
+
+    deinit {
+        lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     func start() {
@@ -25,6 +35,10 @@ final class IntervalTimerViewModel: ObservableObject {
             remainingSeconds = duration
         }
         endDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
+        wasAwayFromForeground = false
+        didExpireWhileInactive = false
+        shouldSuppressNextInAppCompletionSound = false
+        hasHandledCurrentTimerCompletion = false
         isRunning = true
         startTicker()
         scheduleTimerNotification(seconds: remainingSeconds)
@@ -37,6 +51,11 @@ final class IntervalTimerViewModel: ObservableObject {
 
     func startTimerIfNeeded() {
         refreshRemainingSeconds()
+        if isRunning, remainingSeconds == 0 {
+            completeTimer(playSound: shouldPlayCompletionSound())
+            return
+        }
+
         guard isRunning, timer == nil else { return }
         startTicker()
     }
@@ -50,11 +69,7 @@ final class IntervalTimerViewModel: ObservableObject {
                 guard let self else { return }
                 self.refreshRemainingSeconds()
                 if self.remainingSeconds == 0 {
-                    self.stop(cancelNotification: false)
-                    self.playTimerSoundIfAvailable()
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.prepare()
-                    generator.notificationOccurred(.warning)
+                    self.completeTimer(playSound: self.shouldPlayCompletionSound())
                 }
             }
     }
@@ -77,6 +92,92 @@ final class IntervalTimerViewModel: ObservableObject {
 
     private func refreshRemainingSeconds() {
         remainingSeconds = remainingTime()
+    }
+
+    private func observeAppLifecycle() {
+        let center = NotificationCenter.default
+
+        lifecycleObservers.append(
+            center.addObserver(
+                forName: UIApplication.willResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.markTimerInactive()
+            }
+        )
+
+        lifecycleObservers.append(
+            center.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.markTimerInactive()
+            }
+        )
+
+        lifecycleObservers.append(
+            center.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleAppDidBecomeActive()
+            }
+        )
+    }
+
+    private func markTimerInactive() {
+        guard isRunning else { return }
+        wasAwayFromForeground = true
+    }
+
+    private func handleAppDidBecomeActive() {
+        guard isRunning else {
+            wasAwayFromForeground = false
+            return
+        }
+
+        if let endDate, Date() >= endDate {
+            didExpireWhileInactive = wasAwayFromForeground
+            shouldSuppressNextInAppCompletionSound = wasAwayFromForeground
+            remainingSeconds = 0
+            completeTimer(playSound: false)
+            return
+        }
+
+        refreshRemainingSeconds()
+
+        if remainingSeconds == 0 {
+            completeTimer(playSound: shouldPlayCompletionSound())
+        } else {
+            wasAwayFromForeground = false
+            shouldSuppressNextInAppCompletionSound = false
+            startTimerIfNeeded()
+        }
+    }
+
+    private func shouldPlayCompletionSound() -> Bool {
+        UIApplication.shared.applicationState == .active
+            && wasAwayFromForeground == false
+            && didExpireWhileInactive == false
+            && shouldSuppressNextInAppCompletionSound == false
+    }
+
+    private func completeTimer(playSound: Bool) {
+        guard hasHandledCurrentTimerCompletion == false else { return }
+        hasHandledCurrentTimerCompletion = true
+
+        let shouldPlayInAppSound = playSound && shouldSuppressNextInAppCompletionSound == false
+        stop(cancelNotification: shouldPlayInAppSound)
+
+        guard shouldPlayInAppSound else { return }
+
+        playTimerSoundIfAvailable()
+        let generator = UINotificationFeedbackGenerator()
+        generator.prepare()
+        generator.notificationOccurred(.warning)
     }
 
     private func scheduleTimerNotification(seconds: Int) {
@@ -110,8 +211,9 @@ final class IntervalTimerViewModel: ObservableObject {
     }
 
     private func cancelTimerNotification() {
-        UNUserNotificationCenter.current()
-            .removePendingNotificationRequests(withIdentifiers: [timerNotificationId])
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [timerNotificationId])
+        center.removeDeliveredNotifications(withIdentifiers: [timerNotificationId])
     }
 
     private func playTimerSoundIfAvailable() {
