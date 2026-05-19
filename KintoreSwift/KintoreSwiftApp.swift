@@ -25,14 +25,7 @@ struct KintoreSwiftApp: App {
     }
 
     private func configureAudioSession() {
-        let session = AVAudioSession.sharedInstance()
-        do {
-            // Keep external music playing while app sound effects play.
-            try session.setCategory(.ambient, options: [.mixWithOthers])
-            try session.setActive(true)
-        } catch {
-            print("AudioSession setup failed: \(error)")
-        }
+        TimerAudioSession.configure()
     }
 
     private func configureNotifications() {
@@ -46,6 +39,31 @@ struct KintoreSwiftApp: App {
     }
 }
 
+enum TimerAudioSession {
+    private static var isConfigured = false
+
+    static func configure() {
+        let session = AVAudioSession.sharedInstance()
+
+        do {
+            if session.category != .playback || !session.categoryOptions.contains(.mixWithOthers) {
+                // Keep timer sounds audible in silent mode without interrupting external music.
+                try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            }
+
+            guard isConfigured == false else { return }
+            try session.setActive(true)
+            isConfigured = true
+        } catch {
+            print("AudioSession setup failed: \(error)")
+        }
+    }
+}
+
+enum TimerNotificationConstants {
+    static let requestId = "workout_timer"
+}
+
 private final class TimerNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = TimerNotificationDelegate()
 
@@ -54,6 +72,11 @@ private final class TimerNotificationDelegate: NSObject, UNUserNotificationCente
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        if notification.request.identifier == TimerNotificationConstants.requestId {
+            completionHandler([.banner])
+            return
+        }
+
         completionHandler([.banner, .sound])
     }
 }

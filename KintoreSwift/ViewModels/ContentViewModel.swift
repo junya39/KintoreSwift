@@ -37,6 +37,7 @@ class ContentViewModel: ObservableObject {
         var lastReps: Int
         var bestWeight: Double
         var bestReps: Int
+        var bestVolume: Double
     }
 
     private enum LogSyncKeys {
@@ -120,6 +121,14 @@ class ContentViewModel: ObservableObject {
         side: String,
         userStatusVM: UserStatusViewModel? = nil
     ) {
+        guard
+            exercise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+            reps >= 1,
+            weight >= 0
+        else {
+            return
+        }
+
         let previousSnapshot = exerciseRecordSnapshots[exercise]
         let isWeightRecord: Bool
         let isRepRecord: Bool
@@ -160,7 +169,11 @@ class ContentViewModel: ObservableObject {
             eventMessage = normalMessage
         }
 
-        DatabaseManager.shared.insert(
+        let didHaveSetToday = entries.contains {
+            Calendar.current.isDate($0.date, inSameDayAs: date)
+        }
+        let previousBestVolume = previousSnapshot?.bestVolume
+        let inserted = DatabaseManager.shared.insert(
             date: date,
             bodyPart: bodyPart,
             exercise: exercise,
@@ -169,6 +182,7 @@ class ContentViewModel: ObservableObject {
             note: note,
             side: side
         )
+        guard inserted else { return }
 
         if shouldGrantXP(for: side, exercise: exercise) {
             // 保存完了後に、今回セットの負荷分XPを加算
@@ -182,19 +196,22 @@ class ContentViewModel: ObservableObject {
                 let growthType = growthType(for: reps)
                 let ratio = statRatio(for: growthType)
                 let xpType = xpType(for: ratio, bodyPart: bodyPart)
-                let recordMultiplier = isBodyweight && isRepRecord ? 1.15 : 1.0
                 let baseXP = baseXPValue(
                     trainingLoad: trainingLoad,
                     reps: reps,
                     isBodyweight: isBodyweight
-                ) * recordMultiplier
+                )
                 let adjustedBaseXP = userStatusVM.titleManager.applyBonus(
                     baseXP: baseXP,
                     type: xpType
                 )
                 let gainedXP = userStatusVM.addXP(
-                    volume: trainingLoad,
+                    weight: weight,
+                    reps: reps,
                     exerciseId: exercise,
+                    isBodyweight: isBodyweight,
+                    previousBestVolume: previousBestVolume,
+                    isFirstSetOfDay: didHaveSetToday == false,
                     baseXPOverride: adjustedBaseXP
                 )
                 let statGain = applyWorkoutGrowth(
@@ -261,11 +278,13 @@ class ContentViewModel: ObservableObject {
         reps: Int,
         isBodyweight: Bool
     ) -> Double {
+        guard reps > 0, weight >= 0 else { return 0 }
+        let calculationReps = min(reps, 100)
         if isBodyweight {
-            return max(0, Double(reps))
+            return 30 * Double(calculationReps)
         }
 
-        return max(0, weight) * Double(reps)
+        return min(weight, 500) * Double(calculationReps)
     }
 
     private func baseXPValue(
@@ -273,11 +292,21 @@ class ContentViewModel: ObservableObject {
         reps: Int,
         isBodyweight: Bool
     ) -> Double {
-        if isBodyweight {
-            return min(max(0, Double(reps)) * 0.8, 45)
-        }
+        guard trainingLoad.isFinite, trainingLoad > 0 else { return 0 }
+        return 10 + sqrt(trainingLoad) * repsXPMultiplier(for: min(max(reps, 1), 100))
+    }
 
-        return sqrt(trainingLoad)
+    private func repsXPMultiplier(for reps: Int) -> Double {
+        switch reps {
+        case 1...3:
+            return 1.15
+        case 4...8:
+            return 1.10
+        case 9...17:
+            return 1.05
+        default:
+            return 1.10
+        }
     }
 
     private func growthType(for reps: Int) -> GrowthType {
@@ -527,12 +556,14 @@ class ContentViewModel: ObservableObject {
                 lastWeight: entry.weight,
                 lastReps: entry.reps,
                 bestWeight: entry.weight,
-                bestReps: entry.reps
+                bestReps: entry.reps,
+                bestVolume: entry.weight * Double(entry.reps)
             )
             snapshot.lastWeight = entry.weight
             snapshot.lastReps = entry.reps
             snapshot.bestWeight = max(snapshot.bestWeight, entry.weight)
             snapshot.bestReps = max(snapshot.bestReps, entry.reps)
+            snapshot.bestVolume = max(snapshot.bestVolume, entry.weight * Double(entry.reps))
             snapshots[entry.exercise] = snapshot
         }
         exerciseRecordSnapshots = snapshots

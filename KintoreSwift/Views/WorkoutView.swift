@@ -158,10 +158,13 @@ struct WorkoutView: View {
                         onDoneTap: {
                             let newValue = tempMinute * 60 + tempSecond
                             if newValue > 0 {
-                                timerVM.duration = newValue
+                                timerVM.updateDuration(newValue)
                                 timerVM.reset()
                             }
                             isEditingTimer = false
+                        },
+                        onTimerSelectionChange: {
+                            timerVM.updateDuration(selectedTimerSeconds)
                         },
                         onPrimaryTap: {
                             if timerVM.isRunning {
@@ -542,6 +545,7 @@ private struct TrainingDashboardSection: View {
     @Binding var tempSecond: Int
     let onTimeTap: () -> Void
     let onDoneTap: () -> Void
+    let onTimerSelectionChange: () -> Void
     let onPrimaryTap: () -> Void
     let onResetTap: () -> Void
 
@@ -630,6 +634,9 @@ private struct TrainingDashboardSection: View {
                         .colorScheme(.dark)
                         .tint(.green)
                         .frame(maxWidth: .infinity)
+                        .onChange(of: tempMinute) { _, _ in
+                            onTimerSelectionChange()
+                        }
 
                         Picker("", selection: $tempSecond) {
                             ForEach(0..<60, id: \.self) { value in
@@ -642,6 +649,9 @@ private struct TrainingDashboardSection: View {
                         .colorScheme(.dark)
                         .tint(.green)
                         .frame(maxWidth: .infinity)
+                        .onChange(of: tempSecond) { _, _ in
+                            onTimerSelectionChange()
+                        }
                     }
                     .frame(height: 200)
 

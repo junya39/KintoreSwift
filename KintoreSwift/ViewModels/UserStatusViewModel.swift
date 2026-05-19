@@ -21,6 +21,7 @@ final class UserStatusViewModel: ObservableObject {
     @Published private(set) var baselines: [String: Double] { didSet { persistIfNeeded() } }
     private var isHydrating = true
     private var pendingLevelUpLevel: Int?
+    private let maxXPPerSet = 500
 
     init(
         level: Int = 1,
@@ -52,24 +53,43 @@ final class UserStatusViewModel: ObservableObject {
     }
 
     @discardableResult
-    func addXP(volume: Double, exerciseId: String, baseXPOverride: Double? = nil) -> Int {
-        guard volume > 0, !exerciseId.isEmpty else { return 0 }
+    func addXP(
+        weight: Double,
+        reps: Int,
+        exerciseId: String,
+        isBodyweight: Bool,
+        previousBestVolume: Double?,
+        isFirstSetOfDay: Bool,
+        baseXPOverride: Double? = nil
+    ) -> Int {
+        guard !exerciseId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return recordNoXP()
+        }
 
-        let baseXP = max(0, baseXPOverride ?? sqrt(volume))
-
-        // baseline未登録時は初回volumeを採用
-        let baseline = baselines[exerciseId] ?? volume
-        let growthRate = volume / baseline
-        let multiplier = min(max(growthRate, 0.8), 1.2)
-        let totalBonusMultiplier =
-            1 + (Double(power) * 0.01) + (Double(endurance) * 0.01)
-        let gainedXP = Int(baseXP * multiplier * totalBonusMultiplier)
+        let gainedXP = calculateXP(
+            weight: weight,
+            reps: reps,
+            exerciseId: exerciseId,
+            isBodyweight: isBodyweight,
+            previousBestVolume: previousBestVolume,
+            isFirstSetOfDay: isFirstSetOfDay,
+            baseXPOverride: baseXPOverride
+        )
+        guard gainedXP > 0 else { return recordNoXP() }
 
         currentXP += gainedXP
         lastGainedXP = gainedXP
 
-        // baselineを指数移動平均で更新
-        baselines[exerciseId] = baseline * 0.9 + volume * 0.1
+        let calculationWeight = isBodyweight ? 30.0 : min(max(weight, 0), 500)
+        let calculationReps = min(max(reps, 1), 100)
+        let volume = calculationWeight * Double(calculationReps)
+        if volume.isFinite, volume > 0 {
+            if let baseline = baselines[exerciseId], baseline.isFinite, baseline > 0 {
+                baselines[exerciseId] = baseline * 0.9 + volume * 0.1
+            } else {
+                baselines[exerciseId] = volume
+            }
+        }
 
         // レベルアップ判定
         while currentXP >= requiredXP(for: level) {
@@ -89,6 +109,91 @@ final class UserStatusViewModel: ObservableObject {
         return gainedXP
     }
 
+    private func calculateXP(
+        weight: Double,
+        reps: Int,
+        exerciseId: String,
+        isBodyweight: Bool,
+        previousBestVolume: Double?,
+        isFirstSetOfDay: Bool,
+        baseXPOverride: Double?
+    ) -> Int {
+        guard reps > 0, weight >= 0 else { return 0 }
+
+        let calculationReps = min(reps, 100)
+        let calculationWeight = isBodyweight ? 30.0 : min(weight, 500)
+        let volume = calculationWeight * Double(calculationReps)
+        guard volume.isFinite, volume > 0 else { return 0 }
+
+        let baseXP = 10.0
+        let volumeXP = sqrt(volume)
+        let repsMultiplier = repsCorrection(for: calculationReps)
+        let baselineMultiplier = baselineGrowthMultiplier(for: exerciseId, volume: volume)
+        let titleAdjustedXP = baseXPOverride.flatMap { value -> Double? in
+            guard value.isFinite, value >= 0 else { return nil }
+            return value
+        }
+        let effortXP = titleAdjustedXP ?? (baseXP + volumeXP * repsMultiplier * baselineMultiplier)
+        let prBonus = prBonus(currentVolume: volume, previousBestVolume: previousBestVolume)
+        let dailyBonus = isFirstSetOfDay ? 20.0 : 0.0
+        // TODO: 日別XP付与履歴を永続化したら、ストリークボーナスと1日1500XP上限をここで1日1回だけ適用する。
+        let streakBonus = 0.0
+
+        var finalXP = effortXP + prBonus + dailyBonus + streakBonus
+        let setCap = prBonus > 0 ? 250.0 : 150.0
+        finalXP = min(finalXP, setCap)
+
+        guard finalXP.isFinite, finalXP >= 0 else { return 0 }
+        return min(max(Int(finalXP.rounded()), 0), maxXPPerSet)
+    }
+
+    private func repsCorrection(for reps: Int) -> Double {
+        switch reps {
+        case 1...3:
+            return 1.15
+        case 4...8:
+            return 1.10
+        case 9...17:
+            return 1.05
+        default:
+            return 1.10
+        }
+    }
+
+    private func baselineGrowthMultiplier(for exerciseId: String, volume: Double) -> Double {
+        guard
+            let baseline = baselines[exerciseId],
+            baseline.isFinite,
+            baseline > 1,
+            volume.isFinite,
+            volume > 0
+        else {
+            return 1.0
+        }
+
+        let rawGrowthRate = volume / baseline
+        guard rawGrowthRate.isFinite, rawGrowthRate > 0 else { return 1.0 }
+        return min(max(rawGrowthRate, 0.5), 2.0)
+    }
+
+    private func prBonus(currentVolume: Double, previousBestVolume: Double?) -> Double {
+        guard
+            let previousBestVolume,
+            previousBestVolume.isFinite,
+            previousBestVolume > 0,
+            currentVolume > previousBestVolume
+        else {
+            return 0
+        }
+
+        return currentVolume >= previousBestVolume * 1.10 ? 50 : 30
+    }
+
+    private func recordNoXP() -> Int {
+        lastGainedXP = 0
+        return 0
+    }
+
     func publishPendingLevelUpIfNeeded(powerGain: Int, enduranceGain: Int) {
         guard let pendingLevelUpLevel else { return }
         levelUpEvent = LevelUpEvent(
@@ -100,7 +205,19 @@ final class UserStatusViewModel: ObservableObject {
     }
 
     func requiredXP(for level: Int) -> Int {
-        120 + Int(pow(Double(level), 1.8) * 8)
+        300 + max(1, level) * 50
+    }
+
+    func resetUserStatusForDebug() {
+        level = 1
+        currentXP = 0
+        power = 0
+        endurance = 0
+        lastGainedXP = 0
+        didLevelUp = false
+        levelUpEvent = nil
+        pendingLevelUpLevel = nil
+        baselines = [:]
     }
 
     func getProgress() -> Double {
