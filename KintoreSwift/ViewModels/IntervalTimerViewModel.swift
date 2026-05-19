@@ -7,7 +7,7 @@ import UserNotifications
 final class IntervalTimerViewModel: ObservableObject {
     @Published private(set) var remainingSeconds: Int
     @Published var isRunning: Bool = false
-    @Published var duration: Int
+    @Published private(set) var duration: Int
 
     private var timer: AnyCancellable?
     private var audioPlayer: AVAudioPlayer?
@@ -18,10 +18,25 @@ final class IntervalTimerViewModel: ObservableObject {
     private var shouldSuppressNextInAppCompletionSound = false
     private var hasHandledCurrentTimerCompletion = false
     private let timerNotificationId = TimerNotificationConstants.requestId
+    private let userDefaults: UserDefaults
 
-    init(duration: Int = 90) {
-        self.duration = duration
-        self.remainingSeconds = duration
+    private enum Defaults {
+        static let selectedDurationSecondsKey = "intervalTimer.selectedDurationSeconds"
+        static let fallbackDurationSeconds = 90
+    }
+
+    init(
+        duration defaultDuration: Int = Defaults.fallbackDurationSeconds,
+        userDefaults: UserDefaults = .standard
+    ) {
+        self.userDefaults = userDefaults
+
+        let savedDuration = userDefaults.object(
+            forKey: Defaults.selectedDurationSecondsKey
+        ) as? Int
+        let initialDuration = max(1, savedDuration ?? defaultDuration)
+        self.duration = initialDuration
+        self.remainingSeconds = initialDuration
         observeAppLifecycle()
     }
 
@@ -88,6 +103,16 @@ final class IntervalTimerViewModel: ObservableObject {
     func reset() {
         stop()
         remainingSeconds = duration
+    }
+
+    func updateDuration(_ seconds: Int) {
+        guard seconds > 0 else { return }
+
+        duration = seconds
+        userDefaults.set(seconds, forKey: Defaults.selectedDurationSecondsKey)
+
+        guard isRunning == false else { return }
+        remainingSeconds = seconds
     }
 
     private func refreshRemainingSeconds() {
