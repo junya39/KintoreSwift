@@ -74,6 +74,20 @@ private struct MonsterDexRow: View {
                     .lineLimit(2)
 
                 HStack(spacing: 6) {
+                    if isUnlocked {
+                        MonsterDexBadge(
+                            text: monster.type.displayName,
+                            color: .blue,
+                            foregroundColor: .white
+                        )
+
+                        MonsterDexBadge(
+                            text: monster.stageDisplayName,
+                            color: .purple,
+                            foregroundColor: .white
+                        )
+                    }
+
                     MonsterDexBadge(
                         text: isUnlocked ? "解放済み" : "未解放",
                         color: isUnlocked ? .green : .white.opacity(0.28),
@@ -88,6 +102,13 @@ private struct MonsterDexRow: View {
                         )
                     }
                 }
+
+                if isUnlocked, let nextEvolutionText {
+                    Text(nextEvolutionText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.62))
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -97,18 +118,19 @@ private struct MonsterDexRow: View {
         .cornerRadius(14)
     }
 
-    private func lockedHint(for monster: Monster) -> String {
-        if let sourceMonster = MonsterMasterData.monsters.first(where: {
-            guard let nextEvolutionID = $0.nextEvolutionID else { return false }
-            return normalizedMonsterID(nextEvolutionID) == normalizedMonsterID(monster.id)
+    private var nextEvolutionText: String? {
+        guard let nextEvolutionID = monster.nextEvolutionID else { return nil }
+
+        if let nextMonster = MonsterMasterData.monsters.first(where: {
+            normalizedMonsterID($0.id) == normalizedMonsterID(nextEvolutionID)
         }) {
-            return "\(sourceMonster.name)から進化"
+            return "次の進化: \(nextMonster.name)（\(nextEvolutionID)）"
         }
 
-        if monster.unlockCondition.contains("から進化") {
-            return "あるモンスターから進化"
-        }
+        return "次の進化: \(nextEvolutionID)"
+    }
 
+    private func lockedHint(for monster: Monster) -> String {
         return monster.unlockCondition
     }
 
