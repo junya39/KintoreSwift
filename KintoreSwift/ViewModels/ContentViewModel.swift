@@ -102,6 +102,10 @@ class ContentViewModel: ObservableObject {
         rebuildExerciseRecordSnapshots()
     }
 
+    var statusEligibleEntries: [SetEntry] {
+        UserStatusResetStore.statusEligibleEntries(entries)
+    }
+
     func bodyPart(for exercise: String) -> String {
         for (bodyPart, exerciseNames) in exercises where exerciseNames.contains(exercise) {
             return bodyPart
@@ -551,7 +555,7 @@ class ContentViewModel: ObservableObject {
 
     private func rebuildExerciseRecordSnapshots() {
         var snapshots: [String: ExerciseRecordSnapshot] = [:]
-        for entry in entries.sorted(by: { $0.date < $1.date }) {
+        for entry in statusEligibleEntries.sorted(by: { $0.date < $1.date }) {
             var snapshot = snapshots[entry.exercise] ?? ExerciseRecordSnapshot(
                 lastWeight: entry.weight,
                 lastReps: entry.reps,

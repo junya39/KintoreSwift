@@ -66,6 +66,12 @@ final class TitleManager: ObservableObject {
         }
     }
 
+    func resetProgress() {
+        titles = Self.defaultTitles
+        equippedTitleId = nil
+        titleUnlockEvent = nil
+    }
+
     private func unlockIfNeeded(
         id: String,
         condition: Bool,

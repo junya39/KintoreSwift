@@ -16,6 +16,7 @@ final class UserStatusViewModel: ObservableObject {
     @Published var didLevelUp: Bool = false
     @Published var levelUpEvent: LevelUpEvent?
     @Published var titleManager = TitleManager()
+    @Published private(set) var statusResetDate: Date?
 
     // 種目ごとの基準値（将来の永続化対象）
     @Published private(set) var baselines: [String: Double] { didSet { persistIfNeeded() } }
@@ -42,6 +43,7 @@ final class UserStatusViewModel: ObservableObject {
         self.power = resolvedPower
         self.endurance = resolvedEndurance
         self.baselines = resolvedBaselines
+        self.statusResetDate = UserStatusResetStore.statusResetDate()
         self.isHydrating = false
 
         titleManager.evaluateTitles(
@@ -209,6 +211,12 @@ final class UserStatusViewModel: ObservableObject {
     }
 
     func resetUserStatusForDebug() {
+        resetStatusProgress()
+    }
+
+    func resetStatusProgress(resetDate: Date = Date()) {
+        UserStatusResetStore.saveStatusResetDate(resetDate)
+        statusResetDate = resetDate
         level = 1
         currentXP = 0
         power = 0
@@ -218,6 +226,7 @@ final class UserStatusViewModel: ObservableObject {
         levelUpEvent = nil
         pendingLevelUpLevel = nil
         baselines = [:]
+        titleManager.resetProgress()
     }
 
     func getProgress() -> Double {

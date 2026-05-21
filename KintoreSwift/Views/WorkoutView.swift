@@ -410,7 +410,7 @@ struct WorkoutView: View {
 
     private func hasThreeDayWorkoutStreakIncludingToday() -> Bool {
         let calendar = Calendar.current
-        let workoutDays = Set(viewModel.entries.map { calendar.startOfDay(for: $0.date) })
+        let workoutDays = Set(viewModel.statusEligibleEntries.map { calendar.startOfDay(for: $0.date) })
         let today = calendar.startOfDay(for: Date())
 
         for dayOffset in 0...2 {
@@ -426,7 +426,7 @@ struct WorkoutView: View {
     }
 
     private func hasThreeChestTrainingRecords() -> Bool {
-        viewModel.entries.filter(isChestTraining).count >= 3
+        viewModel.statusEligibleEntries.filter(isChestTraining).count >= 3
     }
 
     private func isChestTraining(_ entry: SetEntry) -> Bool {
@@ -438,7 +438,7 @@ struct WorkoutView: View {
     }
 
     private func hasThreeBackTrainingRecords() -> Bool {
-        viewModel.entries.filter(isBackTraining).count >= 3
+        viewModel.statusEligibleEntries.filter(isBackTraining).count >= 3
     }
 
     private func isBackTraining(_ entry: SetEntry) -> Bool {
