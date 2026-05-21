@@ -103,6 +103,14 @@ private struct MonsterDexRow: View {
                     }
                 }
 
+                if isUnlocked {
+                    Text(monster.description)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.68))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 if isUnlocked, let nextEvolutionText {
                     Text(nextEvolutionText)
                         .font(.caption2.weight(.semibold))
