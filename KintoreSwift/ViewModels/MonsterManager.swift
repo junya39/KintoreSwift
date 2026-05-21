@@ -62,6 +62,10 @@ final class MonsterManager: ObservableObject {
         state.buddyMonsterID = monsterID
     }
 
+    func resetUnlockProgress() {
+        state = .empty
+    }
+
     private func save() {
         guard let data = try? JSONEncoder().encode(state) else { return }
         userDefaults.set(data, forKey: Storage.key)

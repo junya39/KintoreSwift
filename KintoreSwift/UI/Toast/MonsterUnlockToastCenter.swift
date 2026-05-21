@@ -19,6 +19,12 @@ final class MonsterUnlockToastCenter: ObservableObject {
         showNextIfNeeded()
     }
 
+    func reset() {
+        queue.removeAll()
+        current = nil
+        isShowing = false
+    }
+
     private func showNextIfNeeded() {
         guard !isShowing, !queue.isEmpty else { return }
 

@@ -4,7 +4,9 @@
 import SwiftUI
 
 struct LevelView: View {
+    @EnvironmentObject private var monsterManager: MonsterManager
     @StateObject var viewModel: LevelViewModel
+    @State private var showResetConfirmation = false
 
     init(viewModel: LevelViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -74,9 +76,30 @@ struct LevelView: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
+
+                Button(role: .destructive) {
+                    showResetConfirmation = true
+                } label: {
+                    Label("Lv / XP / MonsterDex をリセット", systemImage: "arrow.counterclockwise")
+                        .font(.footnote.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red.opacity(0.85))
+                .padding(.top, 8)
             }
             .padding(20)
         }
         .background(Color.black.ignoresSafeArea())
+        .alert("ステータスをリセット", isPresented: $showResetConfirmation) {
+            Button("キャンセル", role: .cancel) {}
+            Button("リセット", role: .destructive) {
+                viewModel.resetStatusProgress()
+                monsterManager.resetUnlockProgress()
+                MonsterUnlockToastCenter.shared.reset()
+            }
+        } message: {
+            Text("過去の筋トレ記録は残したまま、Lv / XP / POWER / ENDURANCE / MonsterDex解放状態をリセットします。よろしいですか？")
+        }
     }
 }

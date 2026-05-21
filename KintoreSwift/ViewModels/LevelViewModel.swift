@@ -35,4 +35,8 @@ final class LevelViewModel: ObservableObject {
     var lastGainedXP: Int {
         userStatus.lastGainedXP
     }
+
+    func resetStatusProgress() {
+        userStatus.resetStatusProgress()
+    }
 }
