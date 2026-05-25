@@ -17,6 +17,9 @@ final class IntervalTimerViewModel: ObservableObject {
     private var didExpireWhileInactive = false
     private var shouldSuppressNextInAppCompletionSound = false
     private var hasHandledCurrentTimerCompletion = false
+    private var currentTimerId: String?
+    private var completedTimerId: String?
+    private var lastCompletionHandledAt: Date?
     private let timerNotificationId = TimerNotificationConstants.requestId
     private let userDefaults: UserDefaults
 
@@ -49,14 +52,23 @@ final class IntervalTimerViewModel: ObservableObject {
         if remainingSeconds == 0 {
             remainingSeconds = duration
         }
-        endDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
+        let timerId = UUID().uuidString
+        let scheduledEndDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
+        currentTimerId = timerId
+        endDate = scheduledEndDate
         wasAwayFromForeground = false
         didExpireWhileInactive = false
         shouldSuppressNextInAppCompletionSound = false
         hasHandledCurrentTimerCompletion = false
+        completedTimerId = nil
+        lastCompletionHandledAt = nil
         isRunning = true
         startTicker()
-        scheduleTimerNotification(seconds: remainingSeconds)
+        print(
+            "IntervalTimer start: timerId=\(timerId), duration=\(duration), remaining=\(remainingSeconds), endDate=\(scheduledEndDate), appState=\(applicationStateDescription)"
+        )
+        checkNotificationAuthorization()
+        scheduleTimerNotification(timerId: timerId, endDate: scheduledEndDate)
     }
 
     func remainingTime() -> Int {
@@ -90,6 +102,9 @@ final class IntervalTimerViewModel: ObservableObject {
     }
 
     func stop(cancelNotification: Bool = true) {
+        print(
+            "IntervalTimer stop: cancelNotification=\(cancelNotification), timerId=\(currentTimerId ?? "nil"), remainingBeforeRefresh=\(remainingSeconds)"
+        )
         refreshRemainingSeconds()
         timer?.cancel()
         timer = nil
@@ -156,9 +171,17 @@ final class IntervalTimerViewModel: ObservableObject {
     private func markTimerInactive() {
         guard isRunning else { return }
         wasAwayFromForeground = true
+        print(
+            "IntervalTimer inactive: timerId=\(currentTimerId ?? "nil"), endDate=\(endDate.map(String.init(describing:)) ?? "nil"), appState=\(applicationStateDescription)"
+        )
     }
 
     private func handleAppDidBecomeActive() {
+        print(
+            "IntervalTimer didBecomeActive: isRunning=\(isRunning), timerId=\(currentTimerId ?? "nil"), endDate=\(endDate.map(String.init(describing:)) ?? "nil"), appState=\(applicationStateDescription)"
+        )
+        checkNotificationAuthorization()
+
         guard isRunning else {
             wasAwayFromForeground = false
             return
@@ -168,6 +191,9 @@ final class IntervalTimerViewModel: ObservableObject {
             didExpireWhileInactive = wasAwayFromForeground
             shouldSuppressNextInAppCompletionSound = wasAwayFromForeground
             remainingSeconds = 0
+            print(
+                "IntervalTimer expired while returning active: timerId=\(currentTimerId ?? "nil"), wasAwayFromForeground=\(wasAwayFromForeground), suppressInAppSound=\(shouldSuppressNextInAppCompletionSound)"
+            )
             completeTimer(playSound: false)
             return
         }
@@ -191,13 +217,30 @@ final class IntervalTimerViewModel: ObservableObject {
     }
 
     private func completeTimer(playSound: Bool) {
-        guard hasHandledCurrentTimerCompletion == false else { return }
+        let finishingTimerId = currentTimerId ?? "unknown"
+
+        guard hasHandledCurrentTimerCompletion == false,
+              completedTimerId != finishingTimerId else {
+            print(
+                "IntervalTimer completion ignored: timerId=\(finishingTimerId), hasHandled=\(hasHandledCurrentTimerCompletion), completedTimerId=\(completedTimerId ?? "nil")"
+            )
+            return
+        }
+
         hasHandledCurrentTimerCompletion = true
+        completedTimerId = finishingTimerId
+        lastCompletionHandledAt = Date()
 
         let shouldPlayInAppSound = playSound && shouldSuppressNextInAppCompletionSound == false
+        print(
+            "IntervalTimer complete: timerId=\(finishingTimerId), playSoundRequested=\(playSound), shouldPlayInAppSound=\(shouldPlayInAppSound), wasAwayFromForeground=\(wasAwayFromForeground), didExpireWhileInactive=\(didExpireWhileInactive), appState=\(applicationStateDescription)"
+        )
         stop(cancelNotification: shouldPlayInAppSound)
 
-        guard shouldPlayInAppSound else { return }
+        guard shouldPlayInAppSound else {
+            print("IntervalTimer in-app sound skipped: timerId=\(finishingTimerId)")
+            return
+        }
 
         playTimerSoundIfAvailable()
         let generator = UINotificationFeedbackGenerator()
@@ -205,20 +248,26 @@ final class IntervalTimerViewModel: ObservableObject {
         generator.notificationOccurred(.warning)
     }
 
-    private func scheduleTimerNotification(seconds: Int) {
-        guard seconds > 0 else { return }
+    private func scheduleTimerNotification(timerId: String, endDate: Date) {
+        let seconds = max(0, endDate.timeIntervalSinceNow)
+        guard seconds > 0 else {
+            print("IntervalTimer notification skipped: timerId=\(timerId), seconds=\(seconds)")
+            return
+        }
 
         cancelTimerNotification()
 
         let content = UNMutableNotificationContent()
         content.title = "タイマー終了"
         content.body = "セットを開始してください"
-        content.sound = UNNotificationSound(
-            named: UNNotificationSoundName("kintore_timer_competition.wav")
-        )
+        content.sound = .default
+        content.userInfo = [
+            "timerId": timerId,
+            "endDate": endDate.timeIntervalSince1970
+        ]
 
         let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: TimeInterval(seconds),
+            timeInterval: seconds,
             repeats: false
         )
 
@@ -228,24 +277,41 @@ final class IntervalTimerViewModel: ObservableObject {
             trigger: trigger
         )
 
+        print(
+            "IntervalTimer notification scheduling: requestId=\(timerNotificationId), timerId=\(timerId), endDate=\(endDate), seconds=\(seconds)"
+        )
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
-                print("Timer notification error: \(error)")
+                print("IntervalTimer notification schedule failed: requestId=\(self.timerNotificationId), timerId=\(timerId), error=\(error)")
+            } else {
+                print("IntervalTimer notification schedule succeeded: requestId=\(self.timerNotificationId), timerId=\(timerId)")
             }
         }
     }
 
     private func cancelTimerNotification() {
         let center = UNUserNotificationCenter.current()
+        print("IntervalTimer notification cancel: requestId=\(timerNotificationId)")
         center.removePendingNotificationRequests(withIdentifiers: [timerNotificationId])
         center.removeDeliveredNotifications(withIdentifiers: [timerNotificationId])
+    }
+
+    private func checkNotificationAuthorization() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            print(
+                "IntervalTimer notification authorization: status=\(settings.authorizationStatus.kintoreDebugDescription), sound=\(settings.soundSetting.kintoreDebugDescription), alert=\(settings.alertSetting.kintoreDebugDescription)"
+            )
+        }
     }
 
     private func playTimerSoundIfAvailable() {
         guard let url = Bundle.main.url(
             forResource: "kintore_timer_competition",
             withExtension: "wav"
-        ) else { return }
+        ) else {
+            print("IntervalTimer in-app sound skipped: audio file not found")
+            return
+        }
 
         do {
             TimerAudioSession.configure()
@@ -255,8 +321,22 @@ final class IntervalTimerViewModel: ObservableObject {
             player.prepareToPlay()
             player.play()
             audioPlayer = player
+            print("IntervalTimer in-app sound played")
         } catch {
             print("Timer sound playback error: \(error)")
+        }
+    }
+
+    private var applicationStateDescription: String {
+        switch UIApplication.shared.applicationState {
+        case .active:
+            return "active"
+        case .inactive:
+            return "inactive"
+        case .background:
+            return "background"
+        @unknown default:
+            return "unknown"
         }
     }
 }

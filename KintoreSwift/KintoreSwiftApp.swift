@@ -31,9 +31,15 @@ struct KintoreSwiftApp: App {
     private func configureNotifications() {
         let center = UNUserNotificationCenter.current()
         center.delegate = TimerNotificationDelegate.shared
-        center.requestAuthorization(options: [.alert, .sound]) { _, error in
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error {
                 print("Notification permission error: \(error)")
+            }
+            print("Notification permission request completed: granted=\(granted)")
+            center.getNotificationSettings { settings in
+                print(
+                    "Notification settings: status=\(settings.authorizationStatus.kintoreDebugDescription), sound=\(settings.soundSetting.kintoreDebugDescription), alert=\(settings.alertSetting.kintoreDebugDescription)"
+                )
             }
         }
     }
@@ -73,10 +79,45 @@ private final class TimerNotificationDelegate: NSObject, UNUserNotificationCente
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         if notification.request.identifier == TimerNotificationConstants.requestId {
+            print("Timer notification willPresent in foreground: banner only, notification sound suppressed")
             completionHandler([.banner])
             return
         }
 
         completionHandler([.banner, .sound])
+    }
+}
+
+extension UNAuthorizationStatus {
+    var kintoreDebugDescription: String {
+        switch self {
+        case .notDetermined:
+            return "notDetermined"
+        case .denied:
+            return "denied"
+        case .authorized:
+            return "authorized"
+        case .provisional:
+            return "provisional"
+        case .ephemeral:
+            return "ephemeral"
+        @unknown default:
+            return "unknown"
+        }
+    }
+}
+
+extension UNNotificationSetting {
+    var kintoreDebugDescription: String {
+        switch self {
+        case .notSupported:
+            return "notSupported"
+        case .disabled:
+            return "disabled"
+        case .enabled:
+            return "enabled"
+        @unknown default:
+            return "unknown"
+        }
     }
 }
