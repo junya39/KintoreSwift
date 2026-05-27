@@ -106,6 +106,39 @@ class ContentViewModel: ObservableObject {
         UserStatusResetStore.statusEligibleEntries(entries)
     }
 
+    static func sortedForDailyRecordDisplay(_ entries: [SetEntry]) -> [SetEntry] {
+        let firstRecordByExercise = Dictionary(grouping: entries, by: \.exercise)
+            .compactMapValues { exerciseEntries in
+                exerciseEntries.min { lhs, rhs in
+                    if lhs.date == rhs.date {
+                        return lhs.id < rhs.id
+                    }
+                    return lhs.date < rhs.date
+                }
+            }
+
+        return entries.sorted { lhs, rhs in
+            if lhs.exercise == rhs.exercise {
+                if lhs.date == rhs.date {
+                    return lhs.id < rhs.id
+                }
+                return lhs.date < rhs.date
+            }
+
+            let lhsFirst = firstRecordByExercise[lhs.exercise]
+            let rhsFirst = firstRecordByExercise[rhs.exercise]
+
+            if lhsFirst?.date == rhsFirst?.date {
+                if lhsFirst?.id == rhsFirst?.id {
+                    return lhs.exercise < rhs.exercise
+                }
+                return (lhsFirst?.id ?? lhs.id) < (rhsFirst?.id ?? rhs.id)
+            }
+
+            return (lhsFirst?.date ?? lhs.date) < (rhsFirst?.date ?? rhs.date)
+        }
+    }
+
     func bodyPart(for exercise: String) -> String {
         for (bodyPart, exerciseNames) in exercises where exerciseNames.contains(exercise) {
             return bodyPart
@@ -452,13 +485,17 @@ class ContentViewModel: ObservableObject {
 
 
     func updateDailyEntries(for selectedDate: Date) {
-        dailyEntries = entries.filter { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }
+        let selectedDateEntries = entries.filter {
+            Calendar.current.isDate($0.date, inSameDayAs: selectedDate)
+        }
+        dailyEntries = Self.sortedForDailyRecordDisplay(selectedDateEntries)
     }
 
     func getEntries(for date: Date) -> [SetEntry] {
-        entries
-            .filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
-            .sorted { $0.id < $1.id }
+        let dateEntries = entries.filter {
+            Calendar.current.isDate($0.date, inSameDayAs: date)
+        }
+        return Self.sortedForDailyRecordDisplay(dateEntries)
     }
 
     func updateLastDiff(for selectedExercise: String) {

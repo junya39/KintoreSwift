@@ -80,7 +80,10 @@ struct WorkoutView: View {
     }
 
     private var filteredDailyEntries: [SetEntry] {
-        filteredEntries.filter { Calendar.current.isDate($0.date, inSameDayAs: Date()) }
+        let todayEntries = filteredEntries.filter {
+            Calendar.current.isDate($0.date, inSameDayAs: Date())
+        }
+        return ContentViewModel.sortedForDailyRecordDisplay(todayEntries)
     }
 
     private var exerciseLastUpdatedAt: [String: Date] {
@@ -870,6 +873,12 @@ private struct DailyListSection: View {
         w == 0 ? "自重" : String(format: "%.1fkg", w)
     }
 
+    private func noteText(_ note: String?) -> String? {
+        guard let note else { return nil }
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private var filterSummary: String {
         if isExerciseFilterEnabled && !selectedExercise.isEmpty {
             return "\(selectedBodyPart) / \(selectedExercise)"
@@ -921,6 +930,13 @@ private struct DailyListSection: View {
                                     .foregroundColor(.white.opacity(0.65))
                             }
                             Spacer()
+                        }
+
+                        if let note = noteText(entry.note) {
+                            Text("メモ：\(note)")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.58))
+                                .lineLimit(2)
                         }
                     }
                     .padding()

@@ -131,10 +131,11 @@ private struct DaySetRow: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.white.opacity(0.86))
 
-                if let note = entry.note, note.isEmpty == false {
-                    Text(note)
+                if let note = noteText {
+                    Text("メモ：\(note)")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.58))
+                        .lineLimit(2)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -152,6 +153,12 @@ private struct DaySetRow: View {
             : "\(weightText(entry.weight))kg × \(entry.reps)回"
         guard let side = entry.side, side.isEmpty == false else { return base }
         return "\(base)（\(side)）"
+    }
+
+    private var noteText: String? {
+        guard let note = entry.note else { return nil }
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func weightText(_ value: Double) -> String {
