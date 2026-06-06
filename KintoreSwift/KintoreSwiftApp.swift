@@ -70,6 +70,26 @@ enum TimerNotificationConstants {
     static let requestId = "workout_timer"
 }
 
+enum TimerCompletionSound {
+    static let fileName = "kintore_timer_competition.wav"
+
+    static var bundleURL: URL? {
+        Bundle.main.url(forResource: fileName, withExtension: nil)
+    }
+
+    static var notificationSound: UNNotificationSound {
+        UNNotificationSound(named: UNNotificationSoundName(rawValue: fileName))
+    }
+
+    static func logBundleAvailability(context: String) {
+        if let url = bundleURL {
+            print("IntervalTimer sound bundle check: context=\(context), fileName=\(fileName), url=\(url.path), exists=\(FileManager.default.fileExists(atPath: url.path))")
+        } else {
+            print("IntervalTimer sound bundle check failed: context=\(context), fileName=\(fileName), reason=Bundle.main.url returned nil")
+        }
+    }
+}
+
 private final class TimerNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = TimerNotificationDelegate()
 
