@@ -260,7 +260,8 @@ final class IntervalTimerViewModel: ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = "タイマー終了"
         content.body = "セットを開始してください"
-        content.sound = .default
+        TimerCompletionSound.logBundleAvailability(context: "scheduleNotification")
+        content.sound = TimerCompletionSound.notificationSound
         content.userInfo = [
             "timerId": timerId,
             "endDate": endDate.timeIntervalSince1970
@@ -305,11 +306,9 @@ final class IntervalTimerViewModel: ObservableObject {
     }
 
     private func playTimerSoundIfAvailable() {
-        guard let url = Bundle.main.url(
-            forResource: "kintore_timer_competition",
-            withExtension: "wav"
-        ) else {
-            print("IntervalTimer in-app sound skipped: audio file not found")
+        TimerCompletionSound.logBundleAvailability(context: "inAppPlayback")
+        guard let url = TimerCompletionSound.bundleURL else {
+            print("IntervalTimer in-app sound skipped: audio file not found, fileName=\(TimerCompletionSound.fileName)")
             return
         }
 
@@ -321,9 +320,9 @@ final class IntervalTimerViewModel: ObservableObject {
             player.prepareToPlay()
             player.play()
             audioPlayer = player
-            print("IntervalTimer in-app sound played")
+            print("IntervalTimer in-app sound played: fileName=\(TimerCompletionSound.fileName), url=\(url.path)")
         } catch {
-            print("Timer sound playback error: \(error)")
+            print("Timer sound playback error: fileName=\(TimerCompletionSound.fileName), error=\(error)")
         }
     }
 

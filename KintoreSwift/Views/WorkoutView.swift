@@ -54,6 +54,7 @@ struct WorkoutView: View {
     @State private var showDeleteExerciseAlert = false
     @State private var deleteTargetExercise = ""
     @State private var showLevelUpFlash = false
+    @State private var showTimerSoundInfoAlert = false
 
     private let bodyParts = ["ALL", "胸", "背中", "脚", "肩", "腕", "腹筋"]
 
@@ -166,6 +167,9 @@ struct WorkoutView: View {
                         onTimerSelectionChange: {
                             timerVM.updateDuration(selectedTimerSeconds)
                         },
+                        onSoundInfoTap: {
+                            showTimerSoundInfoAlert = true
+                        },
                         onPrimaryTap: {
                             if timerVM.isRunning {
                                 timerVM.stop()
@@ -274,6 +278,11 @@ struct WorkoutView: View {
                 }
             } message: {
                 Text("「\(deleteTargetExercise)」を種目一覧から削除します。")
+            }
+            .alert("通知音について", isPresented: $showTimerSoundInfoAlert) {
+                Button("閉じる", role: .cancel) {}
+            } message: {
+                Text("アプリを開いている時は、マナーモードでもタイマー音が鳴ります。\n\nアプリを閉じている時や画面OFF時は、iPhoneの通知設定とマナーモードに従うため、タイマー音が鳴らない場合があります。")
             }
 
             // ✅ カレンダーで日付が変わった瞬間に「その日」の一覧へ
@@ -546,6 +555,7 @@ private struct TrainingDashboardSection: View {
     let onTimeTap: () -> Void
     let onDoneTap: () -> Void
     let onTimerSelectionChange: () -> Void
+    let onSoundInfoTap: () -> Void
     let onPrimaryTap: () -> Void
     let onResetTap: () -> Void
 
@@ -556,16 +566,18 @@ private struct TrainingDashboardSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("タイマー")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.white.opacity(0.65))
                 Spacer()
                 Text(timerText)
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .onTapGesture(perform: onTimeTap)
             }
 
@@ -595,16 +607,25 @@ private struct TrainingDashboardSection: View {
                     .foregroundColor(.white)
             }
 
-            HStack {
+            HStack(alignment: .center, spacing: 10) {
                 Spacer()
 
                 if !isEditingTimer {
+                    Button(action: onSoundInfoTap) {
+                        Image(systemName: "info.circle")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.12))
+                            .clipShape(Circle())
+                    }
+
                     Button(action: onPrimaryTap) {
                         Text(isRunning ? "停止" : "開始")
-                            .font(.subheadline.weight(.bold))
+                            .font(.system(size: 17, weight: .bold))
                             .foregroundColor(.black)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
+                            .frame(minWidth: 76, minHeight: 44)
+                            .padding(.horizontal, 4)
                             .background(Color.accent)
                             .clipShape(Capsule())
                     }
@@ -668,7 +689,7 @@ private struct TrainingDashboardSection: View {
                 .transition(.move(edge: .bottom))
             }
         }
-        .padding()
+        .padding(18)
         .background(Color.card)
         .cornerRadius(16)
         .padding(.horizontal, 16)
