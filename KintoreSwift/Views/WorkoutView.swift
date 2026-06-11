@@ -376,20 +376,11 @@ struct WorkoutView: View {
             side: selectedSide,
             userStatusVM: userStatusVM
         )
-        if monsterManager.unlockHoraguma() {
-            MonsterUnlockToastCenter.shared.show(monsterName: Monster.horaguma.name)
-        }
-        if hasThreeDayWorkoutStreakIncludingToday(),
-           monsterManager.unlockTsunogard() {
-            MonsterUnlockToastCenter.shared.show(monsterName: MonsterMasterData.tsunogard.name)
-        }
-        if hasThreeChestTrainingRecords(),
-           monsterManager.unlockBenchino() {
-            MonsterUnlockToastCenter.shared.show(monsterName: MonsterMasterData.benchino.name)
-        }
-        if hasThreeBackTrainingRecords(),
-           monsterManager.unlockDedorigan() {
-            MonsterUnlockToastCenter.shared.show(monsterName: MonsterMasterData.dedorigan.name)
+        let newlyUnlockedMonsters = monsterManager.evaluateUnlocks(
+            entries: viewModel.statusEligibleEntries
+        )
+        for monster in newlyUnlockedMonsters {
+            MonsterUnlockToastCenter.shared.show(monsterName: monster.name)
         }
 
         let postSaveSideAction = viewModel.postSaveSideAction(for: currentSide)
@@ -415,47 +406,6 @@ struct WorkoutView: View {
 
         timerVM.reset()
         timerVM.start()
-    }
-
-    private func hasThreeDayWorkoutStreakIncludingToday() -> Bool {
-        let calendar = Calendar.current
-        let workoutDays = Set(viewModel.statusEligibleEntries.map { calendar.startOfDay(for: $0.date) })
-        let today = calendar.startOfDay(for: Date())
-
-        for dayOffset in 0...2 {
-            guard
-                let day = calendar.date(byAdding: .day, value: -dayOffset, to: today),
-                workoutDays.contains(day)
-            else {
-                return false
-            }
-        }
-
-        return true
-    }
-
-    private func hasThreeChestTrainingRecords() -> Bool {
-        viewModel.statusEligibleEntries.filter(isChestTraining).count >= 3
-    }
-
-    private func isChestTraining(_ entry: SetEntry) -> Bool {
-        if entry.bodyPart == "胸" { return true }
-
-        let exercise = entry.exercise.lowercased()
-        let chestKeywords = ["ベンチ", "チェスト", "胸", "フライ", "だっちゅーの"]
-        return chestKeywords.contains { exercise.contains($0) }
-    }
-
-    private func hasThreeBackTrainingRecords() -> Bool {
-        viewModel.statusEligibleEntries.filter(isBackTraining).count >= 3
-    }
-
-    private func isBackTraining(_ entry: SetEntry) -> Bool {
-        if entry.bodyPart == "背中" { return true }
-
-        let exercise = entry.exercise.lowercased()
-        let backKeywords = ["チンニング", "ロー", "ラットプル", "デッド", "プルアップ"]
-        return backKeywords.contains { exercise.contains($0) }
     }
 
     private func applySideTransition(_ action: ContentViewModel.PostSaveSideAction) {

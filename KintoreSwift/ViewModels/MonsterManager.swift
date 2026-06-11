@@ -29,24 +29,17 @@ final class MonsterManager: ObservableObject {
         return monsters.first { $0.id == buddyMonsterID && state.unlockedMonsterIDs.contains($0.id) }
     }
 
+    /// 記録データから全モンスターの解放条件を判定し、新しく解放されたモンスターを返す。
     @discardableResult
-    func unlockHoraguma() -> Bool {
-        unlock(monsterID: Monster.horaguma.id)
-    }
-
-    @discardableResult
-    func unlockTsunogard() -> Bool {
-        unlock(monsterID: MonsterMasterData.tsunogard.id)
-    }
-
-    @discardableResult
-    func unlockBenchino() -> Bool {
-        unlock(monsterID: MonsterMasterData.benchino.id)
-    }
-
-    @discardableResult
-    func unlockDedorigan() -> Bool {
-        unlock(monsterID: MonsterMasterData.dedorigan.id)
+    func evaluateUnlocks(entries: [SetEntry]) -> [Monster] {
+        let newlyUnlockedIDs = MonsterUnlockEvaluator.newlyUnlockableMonsterIDs(
+            entries: entries,
+            unlockedMonsterIDs: state.unlockedMonsterIDs
+        )
+        return newlyUnlockedIDs.compactMap { id in
+            guard unlock(monsterID: id) else { return nil }
+            return monsters.first { $0.id == id }
+        }
     }
 
     @discardableResult
