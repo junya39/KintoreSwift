@@ -16,6 +16,8 @@ struct HomeView: View {
     @State private var showAddExerciseSheet = false
     @State private var showCalendarSheet = false
     @State private var pendingShowHistory = false
+    @State private var pendingAddExercise = false
+    @State private var addExerciseInitialName = ""
     @State private var buddyMemo = ""
 
     private let bodyPartOrder = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
@@ -247,23 +249,35 @@ struct HomeView: View {
             .onChange(of: monsterManager.buddyMonster?.id) { _, _ in
                 refreshBuddyMemo()
             }
-            .sheet(isPresented: $showExercisePickerSheet) {
+            .sheet(isPresented: $showExercisePickerSheet, onDismiss: {
+                if pendingAddExercise {
+                    pendingAddExercise = false
+                    showAddExerciseSheet = true
+                }
+            }) {
                 HomeExercisePickerSheet(
                     exercises: viewModel.exercises,
-                    bodyPartOrder: bodyPartOrder
-                ) { bodyPart, exercise in
-                    selectedBodyPart = bodyPart
-                    selectedExercise = exercise
-                }
+                    bodyPartOrder: bodyPartOrder,
+                    onSelect: { bodyPart, exercise in
+                        selectedBodyPart = bodyPart
+                        selectedExercise = exercise
+                    },
+                    onRequestAdd: { suggestedName in
+                        addExerciseInitialName = suggestedName
+                        pendingAddExercise = true
+                    }
+                )
                 .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showAddExerciseSheet, onDismiss: {
+                addExerciseInitialName = ""
                 viewModel.loadInitialData()
                 normalizeSelection()
                 refreshBuddyMemo()
             }) {
                 HomeAddExerciseView(
                     initialBodyPart: selectedBodyPart,
+                    initialName: addExerciseInitialName,
                     bodyPartOrder: bodyPartOrder
                 ) { bodyPart, name in
                     viewModel.addNewExercise(name: name, bodyPart: bodyPart)
@@ -773,6 +787,7 @@ private struct ActionDock<StartDestination: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("exerciseSelector")
 
             // スタートボタン
             NavigationLink {
@@ -1106,6 +1121,7 @@ private struct HomeExercisePickerSheet: View {
     let exercises: [String: [String]]
     let bodyPartOrder: [String]
     let onSelect: (String, String) -> Void
+    let onRequestAdd: (String) -> Void
 
     @State private var searchText = ""
 
@@ -1140,11 +1156,36 @@ private struct HomeExercisePickerSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     searchField
 
+                    addExerciseButton
+
                     if filteredSections.isEmpty {
-                        Text("該当する種目がありません")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.white.opacity(0.62))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        VStack(spacing: 14) {
+                            Text("該当する種目がありません")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.white.opacity(0.62))
+
+                            if normalizedSearchText.isEmpty == false {
+                                Button {
+                                    requestAdd(suggestedName: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+                                } label: {
+                                    Text("「\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))」を新しく追加する")
+                                        .font(.subheadline.weight(.heavy))
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 18)
+                                        .padding(.vertical, 12)
+                                        .background(
+                                            LinearGradient(
+                                                colors: [.green, .mint],
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
+                                        )
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     } else {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 18) {
@@ -1201,6 +1242,39 @@ private struct HomeExercisePickerSheet: View {
         .fontDesign(.rounded)
     }
 
+    private func requestAdd(suggestedName: String) {
+        onRequestAdd(suggestedName)
+        dismiss()
+    }
+
+    private var addExerciseButton: some View {
+        Button {
+            requestAdd(suggestedName: "")
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.subheadline.weight(.black))
+                    .foregroundColor(.green)
+                Text("新しい種目を追加")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .background(Color.green.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.green.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private var searchField: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
@@ -1236,6 +1310,7 @@ private struct HomeAddExerciseView: View {
     @Environment(\.dismiss) private var dismiss
 
     let initialBodyPart: String
+    var initialName: String = ""
     let bodyPartOrder: [String]
     let onAdd: (String, String) -> Void
 
@@ -1341,6 +1416,9 @@ private struct HomeAddExerciseView: View {
             }
             .onAppear {
                 bodyPart = bodyPartOrder.contains(initialBodyPart) ? initialBodyPart : (bodyPartOrder.first ?? "胸")
+                if exerciseName.isEmpty {
+                    exerciseName = initialName
+                }
             }
         }
         .fontDesign(.rounded)
