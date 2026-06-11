@@ -46,7 +46,16 @@ struct MonsterDexView: View {
             .background(Color.black)
             .navigationTitle("MonsterDex")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                evaluateUnlocksFromStoredRecords()
+            }
         }
+    }
+
+    /// 過去の記録だけで条件を満たしているモンスターを、図鑑を開いたタイミングで解放する
+    private func evaluateUnlocksFromStoredRecords() {
+        let entries = UserStatusResetStore.statusEligibleEntries(DatabaseManager.shared.fetchAll())
+        monsterManager.evaluateUnlocks(entries: entries)
     }
 }
 
