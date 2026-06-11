@@ -270,6 +270,8 @@ struct HomeView: View {
                     selectedBodyPart = bodyPart
                     selectedExercise = name
                 }
+                .presentationDetents([.medium])
+                .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showMonsterSelection) {
                 MonsterBuddySelectionView(monsterManager: monsterManager)
@@ -995,47 +997,91 @@ private struct MonsterBuddySelectionView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
                 if monsterManager.unlockedMonsters.isEmpty {
                     Text("解放済みモンスターはいません")
-                        .foregroundColor(.secondary)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.62))
                 } else {
-                    ForEach(monsterManager.unlockedMonsters) { monster in
-                        Button {
-                            monsterManager.setBuddy(monsterID: monster.id)
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 12) {
-                                MonsterThumbnailView(monster: monster)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(monster.name)
-                                        .font(.headline)
-                                    Text(monster.description)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-
-                                Spacer()
-
-                                if monsterManager.buddyMonster?.id == monster.id {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.green)
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 10) {
+                            ForEach(monsterManager.unlockedMonsters) { monster in
+                                BuddyCandidateCard(
+                                    monster: monster,
+                                    isBuddy: monsterManager.buddyMonster?.id == monster.id
+                                ) {
+                                    monsterManager.setBuddy(monsterID: monster.id)
+                                    dismiss()
                                 }
                             }
                         }
+                        .padding(16)
                     }
                 }
             }
             .navigationTitle("相棒を選ぶ")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("閉じる") {
                         dismiss()
                     }
                 }
             }
         }
+        .fontDesign(.rounded)
+    }
+}
+
+private struct BuddyCandidateCard: View {
+    let monster: Monster
+    let isBuddy: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button {
+            onSelect()
+        } label: {
+            HStack(spacing: 12) {
+                MonsterThumbnailView(monster: monster)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(monster.name)
+                        .font(.headline.weight(.heavy))
+                        .foregroundColor(.white)
+                    Text(monster.description)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.68))
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                if isBuddy {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.green)
+                } else {
+                    Image(systemName: "circle")
+                        .font(.title3)
+                        .foregroundColor(.white.opacity(0.25))
+                }
+            }
+            .padding(12)
+            .background(isBuddy ? Color.green.opacity(0.14) : Color.white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        isBuddy ? Color.green.opacity(0.45) : Color.white.opacity(0.07),
+                        lineWidth: 1.2
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1142,7 +1188,7 @@ private struct HomeExercisePickerSheet: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
             }
-            .navigationTitle("種目を追加")
+            .navigationTitle("種目を選択")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1152,6 +1198,7 @@ private struct HomeExercisePickerSheet: View {
                 }
             }
         }
+        .fontDesign(.rounded)
     }
 
     private var searchField: some View {
@@ -1195,31 +1242,99 @@ private struct HomeAddExerciseView: View {
     @State private var bodyPart: String = ""
     @State private var exerciseName: String = ""
 
+    private var trimmedName: String {
+        exerciseName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var bodyPartColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Picker("部位", selection: $bodyPart) {
-                    ForEach(bodyPartOrder, id: \.self) { part in
-                        Text(part).tag(part)
-                    }
-                }
+            ZStack {
+                Color.black.ignoresSafeArea()
 
-                TextField("種目名", text: $exerciseName)
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("部位")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.green)
+
+                        LazyVGrid(columns: bodyPartColumns, spacing: 8) {
+                            ForEach(bodyPartOrder, id: \.self) { part in
+                                Button {
+                                    bodyPart = part
+                                } label: {
+                                    Text(part)
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundColor(bodyPart == part ? .black : .white.opacity(0.85))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(bodyPart == part ? Color.green : Color.white.opacity(0.08))
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("種目名")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.green)
+
+                        TextField("例: インクラインベンチプレス", text: $exerciseName)
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                            .foregroundColor(.white)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 14)
+                            .background(Color.white.opacity(0.09))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                    }
+
+                    Button {
+                        guard trimmedName.isEmpty == false else { return }
+                        onAdd(bodyPart, trimmedName)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.headline.weight(.black))
+                            Text("この種目を追加する")
+                                .font(.headline.weight(.heavy))
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(
+                            LinearGradient(
+                                colors: trimmedName.isEmpty
+                                    ? [Color.white.opacity(0.18), Color.white.opacity(0.18)]
+                                    : [.green, .mint],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(trimmedName.isEmpty)
+
+                    Spacer()
+                }
+                .padding(16)
             }
             .navigationTitle("新しい種目を追加")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("キャンセル") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("追加") {
-                        let trimmed = exerciseName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        onAdd(bodyPart, trimmed)
+                    Button("閉じる") {
                         dismiss()
                     }
                 }
@@ -1228,5 +1343,6 @@ private struct HomeAddExerciseView: View {
                 bodyPart = bodyPartOrder.contains(initialBodyPart) ? initialBodyPart : (bodyPartOrder.first ?? "胸")
             }
         }
+        .fontDesign(.rounded)
     }
 }
