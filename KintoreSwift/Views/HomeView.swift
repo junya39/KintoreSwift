@@ -14,6 +14,8 @@ struct HomeView: View {
     @State private var selectedExercise = ""
     @State private var showExercisePickerSheet = false
     @State private var showAddExerciseSheet = false
+    @State private var showCalendarSheet = false
+    @State private var pendingShowHistory = false
     @State private var buddyMemo = ""
 
     private let bodyPartOrder = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
@@ -27,50 +29,116 @@ struct HomeView: View {
     private var todayText: String {
         Self.homeDateFormatter.string(from: Date())
     }
+
     private var nextMonsterEncounter: NextMonsterEncounter {
-        if monsterManager.state.unlockedMonsterIDs.contains(Monster.horaguma.id) == false {
+        let metrics = MonsterUnlockEvaluator.makeMetrics(entries: viewModel.statusEligibleEntries)
+        let unlockedIDs = monsterManager.state.unlockedMonsterIDs
+
+        // 記録ゼロの間は「はじめての記録」が最短の出会いなので固定で案内する
+        if metrics.hasAnyRecord == false, unlockedIDs.contains("014") == false {
             return NextMonsterEncounter(
-                monsterName: Monster.horaguma.name,
-                progressText: viewModel.entries.isEmpty ? "あと1回" : "出会いは目前",
-                progress: viewModel.entries.isEmpty ? 0 : 1
+                condition: MonsterMasterData.horaguma.unlockCondition,
+                progressText: "あと1回",
+                progress: 0,
+                number: MonsterMasterData.horaguma.number
             )
         }
 
-        if monsterManager.state.unlockedMonsterIDs.contains(MonsterMasterData.tsunogard.id) == false {
-            let days = threeDayStreakProgress()
-            let remaining = max(3 - days, 0)
+        let candidates = MonsterMasterData.monsters.compactMap { monster -> NextMonsterEncounter? in
+            guard unlockedIDs.contains(monster.id) == false else { return nil }
+            guard let info = Self.encounterProgress(
+                for: monster.id,
+                metrics: metrics,
+                unlockedMonsterIDs: unlockedIDs
+            ) else { return nil }
             return NextMonsterEncounter(
-                monsterName: MonsterMasterData.tsunogard.name,
-                progressText: remaining == 0 ? "達成済み" : "あと\(remaining)日",
-                progress: Double(days) / 3
+                condition: monster.unlockCondition,
+                progressText: info.text,
+                progress: info.progress,
+                number: monster.number
             )
         }
 
-        if monsterManager.state.unlockedMonsterIDs.contains(MonsterMasterData.benchino.id) == false {
-            let count = min(trainingCount(matching: isChestTraining), 3)
-            let remaining = max(3 - count, 0)
-            return NextMonsterEncounter(
-                monsterName: MonsterMasterData.benchino.name,
-                progressText: remaining == 0 ? "達成済み" : "あと\(remaining)回",
-                progress: Double(count) / 3
-            )
+        let best = candidates.max { lhs, rhs in
+            if lhs.progress != rhs.progress { return lhs.progress < rhs.progress }
+            return lhs.number > rhs.number
         }
 
-        if monsterManager.state.unlockedMonsterIDs.contains(MonsterMasterData.dedorigan.id) == false {
-            let count = min(trainingCount(matching: isBackTraining), 3)
-            let remaining = max(3 - count, 0)
-            return NextMonsterEncounter(
-                monsterName: MonsterMasterData.dedorigan.name,
-                progressText: remaining == 0 ? "達成済み" : "あと\(remaining)回",
-                progress: Double(count) / 3
-            )
-        }
-
-        return NextMonsterEncounter(
-            monsterName: "未確認のモンスター",
-            progressText: "次の出会いを準備中",
-            progress: 1
+        return best ?? NextMonsterEncounter(
+            condition: "すべてのモンスターと出会った！",
+            progressText: "コンプリート",
+            progress: 1,
+            number: 0
         )
+    }
+
+    /// 未解放モンスターの解放条件に対する進捗。前提条件（先行モンスター）未達のものは候補から外す。
+    private static func encounterProgress(
+        for monsterID: String,
+        metrics: MonsterUnlockEvaluator.Metrics,
+        unlockedMonsterIDs: Set<String>
+    ) -> (progress: Double, text: String)? {
+        func count(_ current: Int, of target: Int, unit: String) -> (Double, String) {
+            let remaining = max(target - current, 0)
+            return (
+                min(Double(current) / Double(target), 1),
+                remaining == 0 ? "条件達成！" : "あと\(remaining)\(unit)"
+            )
+        }
+        func weight(of target: Double) -> (Double, String) {
+            let remaining = max(target - metrics.totalLiftedWeight, 0)
+            return (
+                min(metrics.totalLiftedWeight / target, 1),
+                remaining == 0 ? "条件達成！" : "あと\(Int(remaining).formatted())kg"
+            )
+        }
+
+        switch monsterID {
+        case "014":
+            return metrics.hasAnyRecord ? (1, "条件達成！") : (0, "あと1回")
+        case "005":
+            return count(metrics.longestStreakDays, of: 3, unit: "日")
+        case "002":
+            return count(metrics.chestRecordCount, of: 3, unit: "回")
+        case "003":
+            return count(metrics.backRecordCount, of: 3, unit: "回")
+        case "001":
+            return weight(of: 10_000)
+        case "006":
+            return count(metrics.morningWorkoutDayCount, of: 3, unit: "日")
+        case "007":
+            return count(metrics.armRecordCount, of: 3, unit: "回")
+        case "008":
+            return count(metrics.workoutDayCount, of: 10, unit: "日")
+        case "010":
+            return count(metrics.dumbbellRecordCount, of: 5, unit: "回")
+        case "004":
+            guard unlockedMonsterIDs.contains("005") else { return nil }
+            return count(metrics.longestStreakDays, of: 7, unit: "日")
+        case "009":
+            guard unlockedMonsterIDs.contains("001") else { return nil }
+            return weight(of: 50_000)
+        case "012":
+            guard unlockedMonsterIDs.contains("002") else { return nil }
+            return count(metrics.benchPressRecordCount, of: 10, unit: "回")
+        case "013":
+            guard unlockedMonsterIDs.contains("003") else { return nil }
+            return count(metrics.backRecordCount, of: 10, unit: "回")
+        case "011":
+            guard unlockedMonsterIDs.contains("009") else { return nil }
+            return weight(of: 100_000)
+        case "015":
+            let ratios = [
+                metrics.totalLiftedWeight / 300_000,
+                Double(metrics.workoutDayCount) / 30,
+                Double(metrics.longestStreakDays) / 7,
+                Double(unlockedMonsterIDs.count) / 10
+            ]
+            let progress = min(ratios.min() ?? 0, 1)
+            return (progress, progress >= 1 ? "条件達成！" : "複合条件に挑戦中")
+        default:
+            return nil
+        }
     }
 
     private var selectedExerciseVolumeText: String {
@@ -102,197 +170,64 @@ struct HomeView: View {
         )
     }
 
-    private func threeDayStreakProgress() -> Int {
-        let calendar = Calendar.current
-        let workoutDays = Set(viewModel.entries.map { calendar.startOfDay(for: $0.date) })
-        let today = calendar.startOfDay(for: Date())
-
-        return (0..<3).reduce(0) { count, offset in
-            guard count == offset,
-                  let day = calendar.date(byAdding: .day, value: -offset, to: today),
-                  workoutDays.contains(day) else {
-                return count
-            }
-            return count + 1
-        }
-    }
-
-    private func trainingCount(matching predicate: (SetEntry) -> Bool) -> Int {
-        viewModel.entries.filter(predicate).count
-    }
-
-    private func isChestTraining(_ entry: SetEntry) -> Bool {
-        if entry.bodyPart == "胸" { return true }
-        let exercise = entry.exercise.lowercased()
-        let chestKeywords = ["ベンチ", "チェスト", "胸", "フライ", "だっちゅーの"]
-        return chestKeywords.contains { exercise.contains($0) }
-    }
-
-    private func isBackTraining(_ entry: SetEntry) -> Bool {
-        if entry.bodyPart == "背中" { return true }
-        let exercise = entry.exercise.lowercased()
-        let backKeywords = ["チンニング", "ロー", "ラットプル", "デッド", "プルアップ"]
-        return backKeywords.contains { exercise.contains($0) }
-    }
-
-    private var isEventLogActive: Bool {
-        switch viewModel.currentLogEvent {
-        case .normalLog:
-            return false
-        default:
-            return true
-        }
-    }
-
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // タイトル
-                    Text("KintoreSwift")
-                        .font(.largeTitle)
-                        .bold()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .foregroundColor(.white)
+            ZStack {
+                HomeStageBackground()
 
-                    Text(todayText)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.white.opacity(0.72))
-                        .padding(.top, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        HomeHUDHeader(
+                            dateText: todayText,
+                            level: userStatusVM.level,
+                            progress: userStatusVM.getProgress(),
+                            currentXP: userStatusVM.currentXP,
+                            requiredXP: userStatusVM.requiredXP(for: userStatusVM.level),
+                            power: userStatusVM.power,
+                            endurance: userStatusVM.endurance
+                        )
 
-                    BuddyMonsterSection(
-                        buddyMonster: monsterManager.buddyMonster,
-                        hasUnlockedMonsters: monsterManager.unlockedMonsters.isEmpty == false,
-                        level: userStatusVM.level,
-                        progress: userStatusVM.getProgress(),
-                        currentXP: userStatusVM.currentXP,
-                        requiredXP: userStatusVM.requiredXP(for: userStatusVM.level),
-                        power: userStatusVM.power,
-                        endurance: userStatusVM.endurance,
-                        buddyMemo: buddyMemo,
-                        nextEncounter: nextMonsterEncounter,
-                        onSelectBuddy: {
-                            showMonsterSelection = true
+                        CharacterStage(
+                            buddyMonster: monsterManager.buddyMonster,
+                            hasUnlockedMonsters: monsterManager.unlockedMonsters.isEmpty == false,
+                            onSelectBuddy: { showMonsterSelection = true }
+                        )
+
+                        SpeechBubble(message: buddyMemo) {
+                            refreshBuddyMemo()
                         }
-                    )
 
-                    CalendarSection(
-                        selectedDate: $selectedDate,
-                        entries: viewModel.entries,
-                        onDateTap: {
-                            showDayHistory = true
-                        }
-                    )
+                        QuickStatsRow(
+                            todaySetCount: homeMetrics.todaySetCount,
+                            streakDays: homeMetrics.streakDays,
+                            totalVolume: homeMetrics.totalVolume
+                        )
 
-                    // 今日のワークアウト
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("本日のトレーニング")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.72))
+                        NextEncounterCard(encounter: nextMonsterEncounter)
 
-                        HStack(spacing: 10) {
-                            Button {
-                                showExercisePickerSheet = true
-                            } label: {
-                                HStack {
-                                    Text(selectedBodyPart)
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundColor(.green)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(Color.green.opacity(0.15))
-                                        .clipShape(Capsule())
-                                    
-                                    Text(selectedExercise.isEmpty ? "種目を選択" : selectedExercise)
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                        .lineLimit(1)
-                                    
-                                    Spacer()
-                                    
-                                    Image(systemName: "chevron.down")
-                                        .font(.caption.bold())
-                                        .foregroundColor(.white.opacity(0.85))
-                                }
+                        ActionDock(
+                            selectedBodyPart: selectedBodyPart,
+                            selectedExercise: selectedExercise,
+                            exerciseVolumeText: selectedExerciseVolumeText,
+                            onTapExerciseSelector: { showExercisePickerSheet = true },
+                            onTapCalendar: { showCalendarSheet = true },
+                            onTapAddExercise: { showAddExerciseSheet = true },
+                            onTapBuddy: { showMonsterSelection = true },
+                            startDestination: {
+                                WorkoutView(
+                                    initialSelectedBodyPart: selectedBodyPart,
+                                    initialSelectedExercise: selectedExercise,
+                                    showInputOnAppear: true
+                                )
                             }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                showAddExerciseSheet = true
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 15, weight: .bold))
-                                    .foregroundColor(.black)
-                                    .frame(width: 34, height: 34)
-                                    .background(Color.accent)
-                                    .clipShape(Circle())
-                            }
-                            .accessibilityLabel("新しい種目を追加")
-                        }
-
-                        HStack {
-                            Spacer()
-
-                            Text(selectedExerciseVolumeText)
-                                .foregroundColor(.green)
-                        }
-
-                        NavigationLink {
-                            WorkoutView(
-                                initialSelectedBodyPart: selectedBodyPart,
-                                initialSelectedExercise: selectedExercise,
-                                showInputOnAppear: true
-                            )
-                        } label: {
-                            Text("スタート")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.green)
-                                .foregroundColor(.black)
-                                .cornerRadius(16)
-                        }
+                        )
                     }
-                    .padding()
-                    .background(Color(.systemGray6).opacity(0.15))
-                    .cornerRadius(14)
-
-                    // 全体進捗（仮）
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("進捗")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.72))
-
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text("総重量")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.78))
-                                    Text("\(homeMetrics.totalVolume.formatted()) kg")
-                                        .bold()
-                                        .foregroundColor(.white)
-                                }
-
-                                Spacer()
-
-                                VStack(alignment: .leading) {
-                                    Text("連続")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.78))
-                                    Text("\(homeMetrics.streakDays)日")
-                                        .bold()
-                                        .foregroundColor(.white)
-                                }
-                            }
-                    }
-                    .padding()
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(14)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 28)
                 }
-                .padding()
             }
-            .background(Color.black) // ← ★ここが正解位置
+            .fontDesign(.rounded)
             .navigationDestination(isPresented: $showDayHistory) {
                 HistoryView(selectedDate: selectedDate)
                     .environmentObject(viewModel)
@@ -301,6 +236,7 @@ struct HomeView: View {
                 viewModel.loadInitialData()
                 normalizeSelection()
                 refreshBuddyMemo()
+                monsterManager.evaluateUnlocks(entries: viewModel.statusEligibleEntries)
             }
             .onChange(of: selectedBodyPart) { _, _ in
                 normalizeSelection()
@@ -340,93 +276,405 @@ struct HomeView: View {
                     .presentationDetents([.medium])
                     .preferredColorScheme(.dark)
             }
+            .sheet(isPresented: $showCalendarSheet, onDismiss: {
+                if pendingShowHistory {
+                    pendingShowHistory = false
+                    showDayHistory = true
+                }
+            }) {
+                HomeCalendarSheet(
+                    selectedDate: $selectedDate,
+                    markedDates: viewModel.entries.map { $0.date },
+                    onSelectDate: { pendingShowHistory = true }
+                )
+                .presentationDetents([.medium])
+                .preferredColorScheme(.dark)
+            }
         }
     }
 }
 
-private struct BuddyMonsterSection: View {
-    let buddyMonster: Monster?
-    let hasUnlockedMonsters: Bool
+// MARK: - ステージ背景
+
+private struct HomeStageBackground: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.09, blue: 0.07),
+                    Color.black
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // ステージ上部のほのかな光
+            RadialGradient(
+                colors: [Color.green.opacity(0.14), .clear],
+                center: .init(x: 0.5, y: 0.32),
+                startRadius: 10,
+                endRadius: 320
+            )
+        }
+        .ignoresSafeArea()
+    }
+}
+
+// MARK: - HUDヘッダー
+
+private struct HomeHUDHeader: View {
+    let dateText: String
     let level: Int
     let progress: Double
     let currentXP: Int
     let requiredXP: Int
     let power: Int
     let endurance: Int
-    let buddyMemo: String
-    let nextEncounter: NextMonsterEncounter
-    let onSelectBuddy: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
+        VStack(spacing: 10) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(dateText)
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.white.opacity(0.65))
+                    Text("きょうもきたえよう！")
+                        .font(.title3.weight(.heavy))
+                        .foregroundColor(.white)
+                }
+
                 Spacer()
 
-                Button {
-                    onSelectBuddy()
-                } label: {
-                    Image(systemName: "person.crop.circle.badge.plus")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(hasUnlockedMonsters ? .black : .white.opacity(0.35))
-                        .frame(width: 36, height: 36)
-                        .background(hasUnlockedMonsters ? Color.green : Color.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
-                .disabled(hasUnlockedMonsters == false)
-                .accessibilityLabel("相棒を選ぶ")
+                LevelBadge(level: level)
             }
 
-            VStack(spacing: 8) {
-                if let buddyMonster {
-                    MonsterArtworkView(monster: buddyMonster)
-                } else {
-                    MonsterPlaceholderIcon()
-                }
+            VStack(spacing: 6) {
+                XPGaugeBar(progress: progress)
 
-                VStack(spacing: 4) {
-                    if let buddyMonster {
-                        Text(buddyMonster.name)
-                            .font(.title2.weight(.bold))
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                    } else {
-                        Text("相棒はまだ設定されていません")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                        Text(hasUnlockedMonsters ? "解放済みモンスターから選べます" : "ワークアウトを保存すると解放されます")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.72))
-                            .multilineTextAlignment(.center)
-                    }
+                HStack(spacing: 8) {
+                    Text("XP \(currentXP.formatted()) / \(requiredXP.formatted())")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.66))
+                        .monospacedDigit()
+
+                    Spacer()
+
+                    StatChip(icon: "flame.fill", label: "POW", value: power, color: .orange)
+                    StatChip(icon: "bolt.heart.fill", label: "END", value: endurance, color: .cyan)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.top, -4)
-
-            MonsterMessageView(message: buddyMemo)
-
-            MonsterStatusStrip(
-                level: level,
-                progress: progress,
-                currentXP: currentXP,
-                requiredXP: requiredXP,
-                power: power,
-                endurance: endurance
-            )
-
-            NextEncounterCard(encounter: nextEncounter)
         }
-        .padding()
-        .background(Color.white.opacity(0.08))
-        .cornerRadius(14)
     }
 }
 
+private struct LevelBadge: View {
+    let level: Int
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("Lv")
+                .font(.caption2.weight(.heavy))
+                .foregroundColor(.green.opacity(0.9))
+            Text("\(level)")
+                .font(.title3.weight(.heavy))
+                .foregroundColor(.white)
+                .monospacedDigit()
+        }
+        .frame(width: 54, height: 54)
+        .background(
+            Circle()
+                .fill(Color.black.opacity(0.55))
+        )
+        .overlay(
+            Circle()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.green, .mint],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2.5
+                )
+        )
+        .shadow(color: .green.opacity(0.35), radius: 8, x: 0, y: 0)
+    }
+}
+
+private struct XPGaugeBar: View {
+    let progress: Double
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.12))
+
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [.green, .mint],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(geometry.size.width * min(max(progress, 0), 1), 12))
+                    .shadow(color: .green.opacity(0.5), radius: 4, x: 0, y: 0)
+            }
+        }
+        .frame(height: 14)
+        .animation(.spring(response: 0.6, dampingFraction: 0.8), value: progress)
+    }
+}
+
+private struct StatChip: View {
+    let icon: String
+    let label: String
+    let value: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.bold))
+                .foregroundColor(color)
+            Text("\(label) \(value.formatted())")
+                .font(.caption2.weight(.bold))
+                .foregroundColor(.white.opacity(0.88))
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(color.opacity(0.16))
+        .clipShape(Capsule())
+    }
+}
+
+// MARK: - キャラクターステージ
+
+private struct CharacterStage: View {
+    let buddyMonster: Monster?
+    let hasUnlockedMonsters: Bool
+    let onSelectBuddy: () -> Void
+
+    @State private var isBobbing = false
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 2) {
+                ZStack {
+                    // キャラクターの背後のグロー
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.green.opacity(0.28), .clear],
+                                center: .center,
+                                startRadius: 10,
+                                endRadius: 150
+                            )
+                        )
+                        .frame(width: 280, height: 280)
+
+                    VStack(spacing: -6) {
+                        Group {
+                            if let buddyMonster, UIImage(named: buddyMonster.imageName) != nil {
+                                Image(buddyMonster.imageName)
+                                    .resizable()
+                                    .scaledToFit()
+                            } else {
+                                MonsterPlaceholderIcon()
+                            }
+                        }
+                        .frame(width: 200, height: 200)
+                        .offset(y: isBobbing ? -7 : 5)
+                        .animation(
+                            .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
+                            value: isBobbing
+                        )
+
+                        // 足元の影
+                        Ellipse()
+                            .fill(Color.black.opacity(0.5))
+                            .frame(width: isBobbing ? 110 : 130, height: 20)
+                            .blur(radius: 6)
+                            .animation(
+                                .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
+                                value: isBobbing
+                            )
+                    }
+                }
+
+                // ネームプレート
+                HStack(spacing: 6) {
+                    if buddyMonster != nil {
+                        Image(systemName: "pawprint.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.green)
+                    }
+                    Text(buddyMonster?.name ?? "相棒を探しに行こう")
+                        .font(.headline.weight(.heavy))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(Color.black.opacity(0.55))
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.green.opacity(0.45), lineWidth: 1.2)
+                )
+
+                if buddyMonster == nil {
+                    Text(hasUnlockedMonsters ? "右上のボタンで相棒を選べるよ" : "ワークアウトを記録すると最初の相棒に出会えるよ")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.6))
+                        .padding(.top, 8)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            // 相棒切り替えボタン
+            Button {
+                onSelectBuddy()
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundColor(hasUnlockedMonsters ? .black : .white.opacity(0.35))
+                    .frame(width: 38, height: 38)
+                    .background(hasUnlockedMonsters ? Color.green : Color.white.opacity(0.1))
+                    .clipShape(Circle())
+                    .shadow(color: hasUnlockedMonsters ? .green.opacity(0.4) : .clear, radius: 6)
+            }
+            .disabled(hasUnlockedMonsters == false)
+            .accessibilityLabel("相棒を選ぶ")
+        }
+        .onAppear {
+            isBobbing = true
+        }
+    }
+}
+
+// MARK: - 吹き出し
+
+private struct SpeechBubble: View {
+    let message: String
+    let onTap: () -> Void
+
+    var body: some View {
+        Button {
+            onTap()
+        } label: {
+            VStack(spacing: 0) {
+                // キャラクターに向かう吹き出しのしっぽ
+                Triangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(width: 18, height: 9)
+
+                Text(message.isEmpty ? BuddyMemoGenerator.fallback(monsterName: nil) : message)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.white.opacity(0.92))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 13)
+                    .background(Color.white.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("タップするとひとことが変わります")
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+// MARK: - クイックステータス
+
+private struct QuickStatsRow: View {
+    let todaySetCount: Int
+    let streakDays: Int
+    let totalVolume: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            QuickStatCapsule(
+                icon: "dumbbell.fill",
+                title: "今日",
+                value: "\(todaySetCount)セット",
+                color: .green
+            )
+            QuickStatCapsule(
+                icon: "flame.fill",
+                title: "連続",
+                value: "\(streakDays)日",
+                color: .orange
+            )
+            QuickStatCapsule(
+                icon: "scalemass.fill",
+                title: "総重量",
+                value: "\(totalVolume.formatted())kg",
+                color: .cyan
+            )
+        }
+    }
+}
+
+private struct QuickStatCapsule: View {
+    let icon: String
+    let title: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(color)
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+
+            Text(value)
+                .font(.footnote.weight(.heavy))
+                .foregroundColor(.white)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(color.opacity(0.25), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - 次の出会い
+
 private struct NextMonsterEncounter {
-    let monsterName: String
+    let condition: String
     let progressText: String
     let progress: Double
+    let number: Int
 }
 
 private struct NextEncounterCard: View {
@@ -434,32 +682,213 @@ private struct NextEncounterCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("次の出会い")
-                .font(.caption2.weight(.semibold))
-                .foregroundColor(.green.opacity(0.85))
-
-            HStack(alignment: .firstTextBaseline) {
-                Text(encounter.monsterName)
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(.white)
+            HStack {
+                HStack(spacing: 5) {
+                    Image(systemName: "sparkles")
+                        .font(.caption.weight(.bold))
+                    Text("つぎの出会い")
+                        .font(.caption.weight(.heavy))
+                }
+                .foregroundColor(.green.opacity(0.9))
 
                 Spacer()
 
                 Text(encounter.progressText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.white.opacity(0.78))
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(.white.opacity(0.82))
             }
 
-            ProgressView(value: min(max(encounter.progress, 0), 1))
-                .tint(.green)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("？？？")
+                    .font(.headline.weight(.heavy))
+                    .foregroundColor(.white)
+
+                Text(encounter.condition)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.62))
+                    .lineLimit(2)
+            }
+
+            XPGaugeBar(progress: encounter.progress)
+                .frame(height: 10)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.28))
-        .cornerRadius(10)
+        .padding(14)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.18), lineWidth: 1)
+        )
     }
 }
+
+// MARK: - アクションドック
+
+private struct ActionDock<StartDestination: View>: View {
+    let selectedBodyPart: String
+    let selectedExercise: String
+    let exerciseVolumeText: String
+    let onTapExerciseSelector: () -> Void
+    let onTapCalendar: () -> Void
+    let onTapAddExercise: () -> Void
+    let onTapBuddy: () -> Void
+    @ViewBuilder let startDestination: () -> StartDestination
+
+    var body: some View {
+        VStack(spacing: 12) {
+            // 種目セレクタ
+            Button {
+                onTapExerciseSelector()
+            } label: {
+                HStack(spacing: 10) {
+                    Text(selectedBodyPart)
+                        .font(.caption.weight(.heavy))
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.green.opacity(0.15))
+                        .clipShape(Capsule())
+
+                    Text(selectedExercise.isEmpty ? "種目を選択" : selectedExercise)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    Text(exerciseVolumeText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.green.opacity(0.85))
+                        .monospacedDigit()
+
+                    Image(systemName: "chevron.down")
+                        .font(.caption.bold())
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.black.opacity(0.4))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            // スタートボタン
+            NavigationLink {
+                startDestination()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "dumbbell.fill")
+                        .font(.headline.weight(.black))
+                    Text("トレーニングスタート！")
+                        .font(.headline.weight(.heavy))
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    LinearGradient(
+                        colors: [.green, .mint],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: .green.opacity(0.35), radius: 10, x: 0, y: 4)
+            }
+
+            // サブアクション
+            HStack(spacing: 10) {
+                DockButton(icon: "calendar", title: "カレンダー", action: onTapCalendar)
+                DockButton(icon: "plus.circle.fill", title: "種目追加", action: onTapAddExercise)
+                DockButton(icon: "pawprint.fill", title: "相棒", action: onTapBuddy)
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
+        )
+    }
+}
+
+private struct DockButton: View {
+    let icon: String
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            action()
+        } label: {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.green)
+                Text(title)
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(Color.black.opacity(0.35))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - カレンダーシート
+
+private struct HomeCalendarSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @Binding var selectedDate: Date
+    let markedDates: [Date]
+    let onSelectDate: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(spacing: 10) {
+                    Text("日付をタップすると、その日の記録が見られるよ")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.6))
+
+                    CalendarView(
+                        selectedDate: $selectedDate,
+                        markedDates: markedDates
+                    )
+                    .frame(height: 240)
+                    .background(Color.card)
+                    .cornerRadius(16)
+
+                    Spacer()
+                }
+                .padding(16)
+            }
+            .navigationTitle("カレンダー")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
+                        dismiss()
+                    }
+                }
+            }
+            .onChange(of: selectedDate) { _, _ in
+                onSelectDate()
+                dismiss()
+            }
+        }
+        .fontDesign(.rounded)
+    }
+}
+
+// MARK: - ひとこと生成
 
 private enum BuddyMemoGenerator {
     static func generate(
@@ -547,44 +976,6 @@ private enum BuddyMemoGenerator {
     }
 }
 
-private struct MonsterMessageView: View {
-    let message: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("ひとこと")
-                .font(.caption2.weight(.semibold))
-                .foregroundColor(.white.opacity(0.55))
-
-            Text(message.isEmpty ? BuddyMemoGenerator.fallback(monsterName: nil) : message)
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.white.opacity(0.9))
-                .multilineTextAlignment(.leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.28))
-        .cornerRadius(10)
-    }
-}
-
-private struct MonsterArtworkView: View {
-    let monster: Monster
-
-    var body: some View {
-        if UIImage(named: monster.imageName) != nil {
-            Image(monster.imageName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 172, height: 172)
-                .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 6)
-        } else {
-            MonsterPlaceholderIcon()
-        }
-    }
-}
-
 private struct MonsterPlaceholderIcon: View {
     var body: some View {
         Image(systemName: "pawprint")
@@ -596,43 +987,7 @@ private struct MonsterPlaceholderIcon: View {
     }
 }
 
-private struct MonsterStatusStrip: View {
-    let level: Int
-    let progress: Double
-    let currentXP: Int
-    let requiredXP: Int
-    let power: Int
-    let endurance: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Lv \(level)")
-                Spacer()
-                Text("POW \(power)")
-                Text("END \(endurance)")
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundColor(.white.opacity(0.88))
-
-            ProgressView(value: progress)
-                .tint(.green)
-
-            HStack {
-                Text("XP \(currentXP.formatted()) / \(requiredXP.formatted())")
-                Spacer()
-                Text("次のレベルまであと \(max(requiredXP - currentXP, 0).formatted())XP")
-            }
-            .font(.caption2)
-            .foregroundColor(.white.opacity(0.68))
-            .monospacedDigit()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.28))
-        .cornerRadius(10)
-    }
-}
+// MARK: - 相棒選択
 
 private struct MonsterBuddySelectionView: View {
     @ObservedObject var monsterManager: MonsterManager
@@ -697,180 +1052,7 @@ private struct MonsterThumbnailView: View {
     }
 }
 
-private struct EvolutionStage {
-    let name: String
-    let assetName: String
-
-    static func from(level: Int) -> EvolutionStage {
-        switch level {
-        case 1...14:
-            return EvolutionStage(name: "フツウ", assetName: "lv1_idle_1")
-        case 15...29:
-            return EvolutionStage(name: "ホソマッチョ", assetName: "lv15_idle_1")
-        default:
-            return EvolutionStage(name: "マッチョ", assetName: "lv30_idle_1")
-        }
-    }
-}
-
-private struct CalendarSection: View {
-    @Binding var selectedDate: Date
-    let entries: [SetEntry]
-    let onDateTap: () -> Void
-
-    var body: some View {
-        CalendarView(
-            selectedDate: $selectedDate,
-            markedDates: entries.map { $0.date }
-        )
-        .frame(height: 220)
-        .background(Color.card)
-        .cornerRadius(16)
-        .onChange(of: selectedDate) { _, _ in
-            onDateTap()
-        }
-    }
-}
-
-private struct CharacterHeaderView: View {
-    let level: Int
-    let progress: Double
-    let currentXP: Int
-    let requiredXP: Int
-    let power: Int
-    let endurance: Int
-
-    private var stage: EvolutionStage { EvolutionStage.from(level: level) }
-    private var statusBoxView: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(stage.name)
-                .font(.caption.weight(.semibold))
-            Text("Lv \(level)")
-                .font(.caption2.weight(.semibold))
-            Text("POW \(power)")
-                .font(.caption2.weight(.semibold))
-            Text("END \(endurance)")
-                .font(.caption2.weight(.semibold))
-
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(Color.white.opacity(0.2))
-                    .frame(height: 3)
-
-                ProgressView(value: progress)
-                    .tint(.green)
-                    .frame(height: 3)
-            }
-            .frame(maxWidth: 95, alignment: .leading)
-
-            Text("XP \(currentXP.formatted()) / \(requiredXP.formatted())")
-                .font(.caption2)
-                .monospacedDigit()
-        }
-        .foregroundColor(.white)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 6)
-        .background(Color.black.opacity(0.9))
-        .overlay(
-            Rectangle().stroke(Color.white, lineWidth: 2)
-        )
-    }
-
-    var body: some View {
-        Button {
-            // TODO: キャラ詳細画面へ遷移
-        } label: {
-            ZStack {
-                Color.black
-
-                VStack(spacing: 16) {
-                    Spacer()
-                    CharacterView(level: level)
-                        .frame(width: 256, height: 256)
-                        .clipped()
-                    Spacer()
-                }
-
-                VStack {
-                    HStack {
-                        statusBoxView
-                            .frame(width: 120)
-                        Spacer()
-                    }
-                    Spacer()
-                }
-                .padding(.top, 16)
-                .padding(.leading, 16)
-            }
-            .frame(maxWidth: .infinity, minHeight: 320)
-            .padding(.top, 4)
-            .padding(.bottom, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-#if DEBUG
-private struct DebugEvolutionPanelView: View {
-    @Binding var enabled: Bool
-    @Binding var debugLevel: Int
-    let displayLevel: Int
-
-    private let presets: [(name: String, level: Int)] = [
-        ("フツウ", 1),
-        ("フツウ", 14),
-        ("ホソマッチョ", 15),
-        ("ホソマッチョ", 29),
-        ("マッチョ", 30),
-        ("マッチョ", 100)
-    ]
-
-    private var stage: EvolutionStage {
-        EvolutionStage.from(level: displayLevel)
-    }
-
-    private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Toggle("DEBUG: 手動レベル", isOn: $enabled)
-                .foregroundColor(.white)
-
-            Stepper(value: $debugLevel, in: 1...120) {
-                Text("DEBUG Level: \(debugLevel)")
-                    .foregroundColor(.white.opacity(enabled ? 0.95 : 0.5))
-            }
-            .disabled(!enabled)
-
-            LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(Array(presets.enumerated()), id: \.offset) { _, preset in
-                    Button(preset.name) {
-                        debugLevel = preset.level
-                        enabled = true
-                    }
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-            }
-
-            Text("表示Lv: \(displayLevel) / 進化: \(stage.name) / asset: \(stage.assetName)")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.78))
-        }
-        .padding(12)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-#endif
+// MARK: - 種目ピッカー
 
 private struct HomeExercisePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
