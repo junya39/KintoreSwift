@@ -4,9 +4,12 @@ import SwiftUI
 import UIKit
 
 struct HomeView: View {
+    private let xpHighlightDuration: TimeInterval = 2.8
+
     @StateObject private var viewModel = ContentViewModel()
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
     @EnvironmentObject private var monsterManager: MonsterManager
+    @EnvironmentObject private var timerVM: IntervalTimerViewModel
     @State private var selectedDate = Date()
     @State private var showDayHistory = false
     @State private var showMonsterSelection = false
@@ -19,6 +22,16 @@ struct HomeView: View {
     @State private var pendingAddExercise = false
     @State private var addExerciseInitialName = ""
     @State private var buddyMemo = ""
+
+    // セット記録の入力フォーム
+    @State private var showInputSheet = false
+    @State private var weightText = ""
+    @State private var repsText = ""
+    @State private var note = ""
+    @State private var isBodyweight = false
+    @State private var selectedSide = ""
+    @State private var showExerciseDetailFromInput = false
+    @FocusState private var focusedInputField: WorkoutInputField?
 
     private let bodyPartOrder = ["胸", "背中", "脚", "肩", "腕", "腹筋"]
     private static let homeDateFormatter: DateFormatter = {
@@ -207,6 +220,8 @@ struct HomeView: View {
 
                         NextEncounterCard(encounter: nextMonsterEncounter)
 
+                        IntervalTimerCard()
+
                         ActionDock(
                             selectedBodyPart: selectedBodyPart,
                             selectedExercise: selectedExercise,
@@ -215,13 +230,7 @@ struct HomeView: View {
                             onTapCalendar: { showCalendarSheet = true },
                             onTapAddExercise: { showAddExerciseSheet = true },
                             onTapBuddy: { showMonsterSelection = true },
-                            startDestination: {
-                                WorkoutView(
-                                    initialSelectedBodyPart: selectedBodyPart,
-                                    initialSelectedExercise: selectedExercise,
-                                    showInputOnAppear: true
-                                )
-                            }
+                            onTapStart: { showInputSheet = true }
                         )
                     }
                     .padding(.horizontal, 16)
@@ -233,6 +242,14 @@ struct HomeView: View {
             .navigationDestination(isPresented: $showDayHistory) {
                 HistoryView(selectedDate: selectedDate)
                     .environmentObject(viewModel)
+            }
+            .navigationDestination(isPresented: $showExerciseDetailFromInput) {
+                if selectedExercise.isEmpty == false {
+                    ExerciseDetailView(
+                        exerciseName: selectedExercise,
+                        contentViewModel: viewModel
+                    )
+                }
             }
             .onAppear {
                 viewModel.loadInitialData()
@@ -306,6 +323,103 @@ struct HomeView: View {
                 .presentationDetents([.medium])
                 .preferredColorScheme(.dark)
             }
+            .sheet(isPresented: $showInputSheet) {
+                InputFormSection(
+                    selectedBodyPart: selectedBodyPart,
+                    selectedExercise: selectedExercise,
+                    isBodyweight: $isBodyweight,
+                    selectedSide: $selectedSide,
+                    weightText: $weightText,
+                    repsText: $repsText,
+                    note: $note,
+                    focusedField: $focusedInputField,
+                    onTapExercise: {
+                        openExerciseDetailFromInputForm()
+                    },
+                    onAdd: addSet
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
+                .preferredColorScheme(.dark)
+            }
+        }
+    }
+
+    // MARK: - セット記録
+
+    private func addSet() {
+        guard let reps = Int(repsText), !selectedExercise.isEmpty else { return }
+
+        let currentSide = selectedSide
+        let weight = isBodyweight ? 0 : (Double(weightText) ?? 0)
+        let actualBodyPart = selectedBodyPart == "ALL"
+            ? viewModel.bodyPart(for: selectedExercise)
+            : selectedBodyPart
+
+        viewModel.addSet(
+            date: Date(),
+            bodyPart: actualBodyPart,
+            exercise: selectedExercise,
+            weight: weight,
+            reps: reps,
+            note: note.isEmpty ? nil : note,
+            side: selectedSide,
+            userStatusVM: userStatusVM
+        )
+        let newlyUnlockedMonsters = monsterManager.evaluateUnlocks(
+            entries: viewModel.statusEligibleEntries
+        )
+        for monster in newlyUnlockedMonsters {
+            MonsterUnlockToastCenter.shared.show(monsterName: monster.name)
+        }
+
+        let postSaveSideAction = viewModel.postSaveSideAction(for: currentSide)
+
+        let gainedXP = userStatusVM.lastGainedXP
+        if gainedXP > 0 {
+            XPToastCenter.shared.show(xp: gainedXP)
+            userStatusVM.lastGainedXP = 0
+        }
+
+        if postSaveSideAction != .none {
+            let delay = gainedXP > 0 ? xpHighlightDuration : 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                applySideTransition(postSaveSideAction)
+            }
+        } else {
+            weightText = ""
+            repsText = ""
+            note = ""
+            selectedSide = ""
+            isBodyweight = false
+        }
+
+        timerVM.reset()
+        timerVM.start()
+    }
+
+    private func applySideTransition(_ action: ContentViewModel.PostSaveSideAction) {
+        switch action {
+        case .switchToLeft:
+            selectedSide = "L"
+        case .switchToRight:
+            selectedSide = "R"
+        case .none:
+            return
+        }
+
+        repsText = ""
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        DispatchQueue.main.async {
+            focusedInputField = .reps
+        }
+    }
+
+    private func openExerciseDetailFromInputForm() {
+        guard !selectedExercise.isEmpty else { return }
+        showInputSheet = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            showExerciseDetailFromInput = true
         }
     }
 }
@@ -738,9 +852,182 @@ private struct NextEncounterCard: View {
     }
 }
 
+// MARK: - インターバルタイマー
+
+private struct IntervalTimerCard: View {
+    @EnvironmentObject private var timerVM: IntervalTimerViewModel
+    @State private var isEditingTimer = false
+    @State private var tempMinute = 1
+    @State private var tempSecond = 30
+    @State private var showTimerSoundInfoAlert = false
+
+    private var selectedTimerSeconds: Int {
+        tempMinute * 60 + tempSecond
+    }
+
+    private var displaySeconds: Int {
+        isEditingTimer ? selectedTimerSeconds : timerVM.remainingSeconds
+    }
+
+    private var timerText: String {
+        let minutes = displaySeconds / 60
+        let seconds = displaySeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                HStack(spacing: 5) {
+                    Image(systemName: "timer")
+                        .font(.caption.weight(.bold))
+                    Text("インターバルタイマー")
+                        .font(.caption.weight(.heavy))
+                }
+                .foregroundColor(.green.opacity(0.9))
+
+                Spacer()
+
+                Text(timerText)
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .onTapGesture(perform: beginEditingTimer)
+            }
+
+            HStack(alignment: .center, spacing: 10) {
+                Spacer()
+
+                if !isEditingTimer {
+                    Button {
+                        showTimerSoundInfoAlert = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.12))
+                            .clipShape(Circle())
+                    }
+
+                    Button {
+                        if timerVM.isRunning {
+                            timerVM.stop()
+                        } else {
+                            timerVM.start()
+                        }
+                    } label: {
+                        Text(timerVM.isRunning ? "停止" : "開始")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(minWidth: 76, minHeight: 44)
+                            .padding(.horizontal, 4)
+                            .background(Color.accent)
+                            .clipShape(Capsule())
+                    }
+
+                    Button {
+                        timerVM.reset()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.12))
+                            .clipShape(Circle())
+                    }
+                }
+            }
+
+            if isEditingTimer {
+                VStack(spacing: 8) {
+                    HStack(spacing: 0) {
+                        Picker("", selection: $tempMinute) {
+                            ForEach(0...60, id: \.self) { value in
+                                Text("\(value)分")
+                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                                    .tag(value)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .colorScheme(.dark)
+                        .tint(.green)
+                        .frame(maxWidth: .infinity)
+                        .onChange(of: tempMinute) { _, _ in
+                            timerVM.updateDuration(selectedTimerSeconds)
+                        }
+
+                        Picker("", selection: $tempSecond) {
+                            ForEach(0..<60, id: \.self) { value in
+                                Text("\(value)秒")
+                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                                    .tag(value)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .colorScheme(.dark)
+                        .tint(.green)
+                        .frame(maxWidth: .infinity)
+                        .onChange(of: tempSecond) { _, _ in
+                            timerVM.updateDuration(selectedTimerSeconds)
+                        }
+                    }
+                    .frame(height: 200)
+
+                    Button("完了") {
+                        finishEditingTimer()
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.accent)
+                    .clipShape(Capsule())
+                }
+                .transition(.move(edge: .bottom))
+            }
+        }
+        .padding(18)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.18), lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.2), value: isEditingTimer)
+        .onAppear {
+            timerVM.startTimerIfNeeded()
+        }
+        .alert("通知音について", isPresented: $showTimerSoundInfoAlert) {
+            Button("閉じる", role: .cancel) {}
+        } message: {
+            Text("アプリを開いている時は、マナーモードでもタイマー音が鳴ります。\n\nアプリを閉じている時や画面OFF時は、iPhoneの通知設定とマナーモードに従うため、タイマー音が鳴らない場合があります。")
+        }
+    }
+
+    private func beginEditingTimer() {
+        timerVM.stop()
+        let total = min(timerVM.duration, 3600)
+        tempMinute = total / 60
+        tempSecond = total % 60
+        isEditingTimer = true
+    }
+
+    private func finishEditingTimer() {
+        let newValue = tempMinute * 60 + tempSecond
+        if newValue > 0 {
+            timerVM.updateDuration(newValue)
+            timerVM.reset()
+        }
+        isEditingTimer = false
+    }
+}
+
 // MARK: - アクションドック
 
-private struct ActionDock<StartDestination: View>: View {
+private struct ActionDock: View {
     let selectedBodyPart: String
     let selectedExercise: String
     let exerciseVolumeText: String
@@ -748,7 +1035,7 @@ private struct ActionDock<StartDestination: View>: View {
     let onTapCalendar: () -> Void
     let onTapAddExercise: () -> Void
     let onTapBuddy: () -> Void
-    @ViewBuilder let startDestination: () -> StartDestination
+    let onTapStart: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
@@ -790,8 +1077,8 @@ private struct ActionDock<StartDestination: View>: View {
             .accessibilityIdentifier("exerciseSelector")
 
             // スタートボタン
-            NavigationLink {
-                startDestination()
+            Button {
+                onTapStart()
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "dumbbell.fill")
@@ -812,6 +1099,7 @@ private struct ActionDock<StartDestination: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .shadow(color: .green.opacity(0.35), radius: 10, x: 0, y: 4)
             }
+            .buttonStyle(.plain)
 
             // サブアクション
             HStack(spacing: 10) {

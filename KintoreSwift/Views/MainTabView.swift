@@ -15,12 +15,6 @@ struct MainTabView: View {
                     Text("Home")
                 }
 
-            WorkoutView()
-                .tabItem {
-                    Image(systemName: "dumbbell")
-                    Text("Workout")
-                }
-
             MonsterDexView()
                 .tabItem {
                     Image(systemName: "square.grid.2x2")
