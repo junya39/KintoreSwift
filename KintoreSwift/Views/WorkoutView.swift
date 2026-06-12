@@ -11,10 +11,6 @@ private enum WorkoutSheet: String, Identifiable {
     var id: String { rawValue }
 }
 
-private enum WorkoutInputField: Hashable {
-    case reps
-}
-
 struct WorkoutView: View {
     private let xpHighlightDuration: TimeInterval = 2.8
 
@@ -37,9 +33,6 @@ struct WorkoutView: View {
     @State private var activeSheet: WorkoutSheet?
     @State private var didSetInitialSheetState = false
     @State private var isExerciseFilterEnabled: Bool
-    @State private var isEditingTimer = false
-    @State private var tempMinute = 1
-    @State private var tempSecond = 30
     @FocusState private var focusedInputField: WorkoutInputField?
 
     @StateObject private var viewModel = WorkoutViewModel()
@@ -54,19 +47,10 @@ struct WorkoutView: View {
     @State private var showDeleteExerciseAlert = false
     @State private var deleteTargetExercise = ""
     @State private var showLevelUpFlash = false
-    @State private var showTimerSoundInfoAlert = false
 
     private let bodyParts = ["ALL", "胸", "背中", "脚", "肩", "腕", "腹筋"]
 
     // MARK: - Computed
-    private var selectedTimerSeconds: Int {
-        tempMinute * 60 + tempSecond
-    }
-
-    private var timerDisplaySeconds: Int {
-        isEditingTimer ? selectedTimerSeconds : timerVM.remainingSeconds
-    }
-
     private var filteredEntries: [SetEntry] {
         let bodyFiltered: [SetEntry]
         if selectedBodyPart == "ALL" {
@@ -139,47 +123,11 @@ struct WorkoutView: View {
                     HeaderSection()
 
                     TrainingDashboardSection(
-                        remainingSeconds: timerDisplaySeconds,
                         currentLevel: viewModel.currentLevel,
                         currentXP: userStatusVM.currentXP,
                         requiredXP: userStatusVM.requiredXP(for: userStatusVM.level),
                         xpProgress: userStatusVM.getProgress(),
-                        lastSetText: viewModel.getLastSet(for: selectedExercise),
-                        isRunning: timerVM.isRunning,
-                        isEditingTimer: $isEditingTimer,
-                        tempMinute: $tempMinute,
-                        tempSecond: $tempSecond,
-                        onTimeTap: {
-                            timerVM.stop()
-                            let total = min(timerVM.duration, 3600)
-                            tempMinute = total / 60
-                            tempSecond = total % 60
-                            isEditingTimer = true
-                        },
-                        onDoneTap: {
-                            let newValue = tempMinute * 60 + tempSecond
-                            if newValue > 0 {
-                                timerVM.updateDuration(newValue)
-                                timerVM.reset()
-                            }
-                            isEditingTimer = false
-                        },
-                        onTimerSelectionChange: {
-                            timerVM.updateDuration(selectedTimerSeconds)
-                        },
-                        onSoundInfoTap: {
-                            showTimerSoundInfoAlert = true
-                        },
-                        onPrimaryTap: {
-                            if timerVM.isRunning {
-                                timerVM.stop()
-                            } else {
-                                timerVM.start()
-                            }
-                        },
-                        onResetTap: {
-                            timerVM.reset()
-                        }
+                        lastSetText: viewModel.getLastSet(for: selectedExercise)
                     )
 
                     BodyPartSection(
@@ -279,12 +227,6 @@ struct WorkoutView: View {
             } message: {
                 Text("「\(deleteTargetExercise)」を種目一覧から削除します。")
             }
-            .alert("通知音について", isPresented: $showTimerSoundInfoAlert) {
-                Button("閉じる", role: .cancel) {}
-            } message: {
-                Text("アプリを開いている時は、マナーモードでもタイマー音が鳴ります。\n\nアプリを閉じている時や画面OFF時は、iPhoneの通知設定とマナーモードに従うため、タイマー音が鳴らない場合があります。")
-            }
-
             // ✅ カレンダーで日付が変わった瞬間に「その日」の一覧へ
             .onChange(of: selectedDate) { _, newValue in
                 viewModel.updateDailyEntries(for: newValue)
@@ -492,45 +434,14 @@ private struct HeaderSection: View {
 }
 
 private struct TrainingDashboardSection: View {
-    let remainingSeconds: Int
     let currentLevel: Int
     let currentXP: Int
     let requiredXP: Int
     let xpProgress: Double
     let lastSetText: String
-    let isRunning: Bool
-    @Binding var isEditingTimer: Bool
-    @Binding var tempMinute: Int
-    @Binding var tempSecond: Int
-    let onTimeTap: () -> Void
-    let onDoneTap: () -> Void
-    let onTimerSelectionChange: () -> Void
-    let onSoundInfoTap: () -> Void
-    let onPrimaryTap: () -> Void
-    let onResetTap: () -> Void
-
-    private var timerText: String {
-        let minutes = remainingSeconds / 60
-        let seconds = remainingSeconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("タイマー")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.white.opacity(0.65))
-                Spacer()
-                Text(timerText)
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .onTapGesture(perform: onTimeTap)
-            }
-
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("XP")
@@ -556,94 +467,11 @@ private struct TrainingDashboardSection: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.white)
             }
-
-            HStack(alignment: .center, spacing: 10) {
-                Spacer()
-
-                if !isEditingTimer {
-                    Button(action: onSoundInfoTap) {
-                        Image(systemName: "info.circle")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Circle())
-                    }
-
-                    Button(action: onPrimaryTap) {
-                        Text(isRunning ? "停止" : "開始")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(minWidth: 76, minHeight: 44)
-                            .padding(.horizontal, 4)
-                            .background(Color.accent)
-                            .clipShape(Capsule())
-                    }
-
-                    Button(action: onResetTap) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Circle())
-                    }
-                }
-            }
-
-            if isEditingTimer {
-                VStack(spacing: 8) {
-                    HStack(spacing: 0) {
-                        Picker("", selection: $tempMinute) {
-                            ForEach(0...60, id: \.self) { value in
-                                Text("\(value)分")
-                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                                    .tag(value)
-                            }
-                        }
-                        .pickerStyle(.wheel)
-                        .colorScheme(.dark)
-                        .tint(.green)
-                        .frame(maxWidth: .infinity)
-                        .onChange(of: tempMinute) { _, _ in
-                            onTimerSelectionChange()
-                        }
-
-                        Picker("", selection: $tempSecond) {
-                            ForEach(0..<60, id: \.self) { value in
-                                Text("\(value)秒")
-                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                                    .tag(value)
-                            }
-                        }
-                        .pickerStyle(.wheel)
-                        .colorScheme(.dark)
-                        .tint(.green)
-                        .frame(maxWidth: .infinity)
-                        .onChange(of: tempSecond) { _, _ in
-                            onTimerSelectionChange()
-                        }
-                    }
-                    .frame(height: 200)
-
-                    Button("完了") {
-                        onDoneTap()
-                    }
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.accent)
-                    .clipShape(Capsule())
-                }
-                .transition(.move(edge: .bottom))
-            }
         }
         .padding(18)
         .background(Color.card)
         .cornerRadius(16)
         .padding(.horizontal, 16)
-        .animation(.easeInOut(duration: 0.2), value: isEditingTimer)
     }
 }
 
@@ -740,92 +568,6 @@ private struct ExercisePickerSection: View {
         .background(Color.card)
         .cornerRadius(16)
         .padding(.horizontal, 16)
-    }
-}
-
-private struct IntervalTimerSection: View {
-    let isRunning: Bool
-    @Binding var isEditingTimer: Bool
-    @Binding var tempMinute: Int
-    @Binding var tempSecond: Int
-    let onDoneTap: () -> Void
-    let onPrimaryTap: () -> Void
-    let onResetTap: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Spacer()
-
-                if !isEditingTimer {
-                    Button(action: onPrimaryTap) {
-                        Text(isRunning ? "停止" : "開始")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(Color.accent)
-                            .clipShape(Capsule())
-                    }
-
-                    Button(action: onResetTap) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Circle())
-                    }
-                }
-            }
-
-            if isEditingTimer {
-                VStack(spacing: 8) {
-                    HStack(spacing: 0) {
-                        Picker("", selection: $tempMinute) {
-                            ForEach(0...60, id: \.self) { value in
-                                Text("\(value)分")
-                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                                    .tag(value)
-                            }
-                        }
-                        .pickerStyle(.wheel)
-                        .colorScheme(.dark)
-                        .tint(.green)
-                        .frame(maxWidth: .infinity)
-
-                        Picker("", selection: $tempSecond) {
-                            ForEach(0..<60, id: \.self) { value in
-                                Text("\(value)秒")
-                                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                                    .tag(value)
-                            }
-                        }
-                        .pickerStyle(.wheel)
-                        .colorScheme(.dark)
-                        .tint(.green)
-                        .frame(maxWidth: .infinity)
-                    }
-                    .frame(height: 200)
-
-                    Button("完了") {
-                        onDoneTap()
-                    }
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.accent)
-                    .clipShape(Capsule())
-                }
-                .transition(.move(edge: .bottom))
-            }
-        }
-        .padding()
-        .background(Color.card)
-        .cornerRadius(16)
-        .padding(.horizontal, 16)
-        .animation(.easeInOut(duration: 0.2), value: isEditingTimer)
     }
 }
 
@@ -926,212 +668,5 @@ private struct DailyListSection: View {
                 .padding(.horizontal, 16)
             }
         }
-    }
-}
-
-private struct InputFormSection: View {
-    @ObservedObject private var toastCenter = XPToastCenter.shared
-    @ObservedObject private var monsterToastCenter = MonsterUnlockToastCenter.shared
-    @EnvironmentObject private var userStatusVM: UserStatusViewModel
-    @State private var levelUpOverlayEvent: LevelUpEvent?
-    @State private var titleUnlockOverlayTitle: Title?
-
-    let selectedBodyPart: String
-    let selectedExercise: String
-    @Binding var isBodyweight: Bool
-    @Binding var selectedSide: String
-    @Binding var weightText: String
-    @Binding var repsText: String
-    @Binding var note: String
-    @FocusState.Binding var focusedField: WorkoutInputField?
-    let onTapExercise: () -> Void
-    let onAdd: () -> Void
-
-    var body: some View {
-        ZStack {
-            ZStack {
-                LinearGradient(
-                    colors: [Color.cardSub, Color.bg],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-
-                VStack(alignment: .leading, spacing: 14) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(width: 44, height: 5)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
-
-                    Text("セットを記録")
-                        .font(.title3.bold())
-                        .foregroundColor(.white)
-
-                    if let item = toastCenter.current {
-                        HStack(spacing: 12) {
-                            Image(systemName: "bolt.fill")
-                                .font(.title3.weight(.black))
-                                .foregroundStyle(.yellow)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("+\(item.amount) XP")
-                                    .font(.title2.weight(.heavy))
-                                    .foregroundStyle(.white)
-                                if let comboText = item.comboText {
-                                    Text(comboText)
-                                        .font(.subheadline.weight(.black))
-                                        .foregroundStyle(.yellow)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 14)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.75))
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(.yellow.opacity(0.55), lineWidth: 1.2)
-                        )
-                        .shadow(color: .yellow.opacity(0.35), radius: 16, x: 0, y: 0)
-                        .shadow(color: .black.opacity(0.4), radius: 16, x: 0, y: 8)
-                        .scaleEffect(item.comboText == nil ? 1.0 : 1.07)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-
-                    if let item = monsterToastCenter.current {
-                        HStack(spacing: 12) {
-                            Image(systemName: "pawprint.fill")
-                                .font(.title3.weight(.black))
-                                .foregroundStyle(.green)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title)
-                                    .font(.subheadline.weight(.bold))
-                                    .foregroundStyle(.white)
-                                Text(item.monsterName)
-                                    .font(.title3.weight(.heavy))
-                                    .foregroundStyle(.green)
-                            }
-                        }
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 14)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.75))
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(.green.opacity(0.55), lineWidth: 1.2)
-                        )
-                        .shadow(color: .green.opacity(0.3), radius: 16, x: 0, y: 0)
-                        .shadow(color: .black.opacity(0.4), radius: 16, x: 0, y: 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-
-                    HStack(spacing: 8) {
-                        Text(selectedBodyPart)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.accent)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.accent.opacity(0.15))
-                            .clipShape(Capsule())
-
-                        Button(action: onTapExercise) {
-                            HStack(spacing: 4) {
-                                Text(selectedExercise.isEmpty ? "種目未選択" : selectedExercise)
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundColor(.white.opacity(0.7))
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    Toggle("自重トレーニング", isOn: $isBodyweight)
-                        .tint(.accent)
-                        .foregroundColor(.white.opacity(0.9))
-
-                    Picker("左右", selection: $selectedSide) {
-                        Text("左").tag("L")
-                        Text("右").tag("R")
-                        Text("なし").tag("")
-                    }
-                    .pickerStyle(.segmented)
-
-                    VStack(spacing: 10) {
-                        TextField("重量 (kg)", text: $weightText)
-                            .keyboardType(.decimalPad)
-                            .disabled(isBodyweight)
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 14)
-                            .background(Color.card)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                        TextField("回数", text: $repsText)
-                            .keyboardType(.numberPad)
-                            .focused($focusedField, equals: .reps)
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 14)
-                            .background(Color.card)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                        TextField("メモ", text: $note)
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 14)
-                            .background(Color.card)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .foregroundColor(.white)
-
-                    Button(action: onAdd) {
-                        Text("このセットを追加")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(
-                                LinearGradient(
-                                    colors: [Color.accent.opacity(0.95), Color.accent.opacity(0.75)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .foregroundColor(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 20)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
-
-            if let event = levelUpOverlayEvent {
-                LevelUpOverlay(event: event) {
-                    levelUpOverlayEvent = nil
-                }
-                .zIndex(999)
-            } else if let title = titleUnlockOverlayTitle {
-                LevelUpOverlay(title: title) {
-                    titleUnlockOverlayTitle = nil
-                }
-                .zIndex(998)
-            }
-        }
-        .onReceive(userStatusVM.$levelUpEvent) { event in
-            guard let event else { return }
-            levelUpOverlayEvent = event
-            userStatusVM.levelUpEvent = nil
-        }
-        .onReceive(userStatusVM.titleManager.$titleUnlockEvent) { unlockedTitle in
-            guard let unlockedTitle else { return }
-            titleUnlockOverlayTitle = unlockedTitle
-            userStatusVM.titleManager.titleUnlockEvent = nil
-        }
-        .animation(.spring(response: 0.55, dampingFraction: 0.78), value: toastCenter.current?.id)
-        .animation(.spring(response: 0.55, dampingFraction: 0.78), value: monsterToastCenter.current?.id)
     }
 }
