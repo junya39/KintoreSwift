@@ -22,6 +22,8 @@ struct HomeView: View {
     @State private var pendingAddExercise = false
     @State private var addExerciseInitialName = ""
     @State private var buddyMemo = ""
+    @StateObject private var workoutAnalysisVM = WorkoutAnalysisViewModel()
+    @State private var showAnalysisSheet = false
 
     // セット記録の入力フォーム
     @State private var showInputSheet = false
@@ -220,6 +222,11 @@ struct HomeView: View {
 
                         NextEncounterCard(encounter: nextMonsterEncounter)
 
+                        WorkoutAnalysisButtonCard(
+                            isLoading: workoutAnalysisVM.isLoading,
+                            onTap: generateWorkoutAnalysisData
+                        )
+
                         IntervalTimerCard()
 
                         ActionDock(
@@ -323,6 +330,12 @@ struct HomeView: View {
                 .presentationDetents([.medium])
                 .preferredColorScheme(.dark)
             }
+            .sheet(isPresented: $showAnalysisSheet, onDismiss: {
+                workoutAnalysisVM.reset()
+            }) {
+                workoutAnalysisSheet
+                    .preferredColorScheme(.dark)
+            }
             .sheet(isPresented: $showInputSheet) {
                 InputFormSection(
                     selectedBodyPart: selectedBodyPart,
@@ -346,6 +359,28 @@ struct HomeView: View {
     }
 
     // MARK: - セット記録
+
+    @ViewBuilder
+    private var workoutAnalysisSheet: some View {
+        switch workoutAnalysisVM.state {
+        case .success(let result):
+            WorkoutAnalysisDebugView(result: result)
+        case .empty(let result):
+            WorkoutAnalysisEmptyView(result: result)
+                .presentationDetents([.medium])
+        case .failure(let message):
+            WorkoutAnalysisFailureView(message: message)
+                .presentationDetents([.medium])
+        case .idle, .loading:
+            WorkoutAnalysisLoadingView()
+                .presentationDetents([.medium])
+        }
+    }
+
+    private func generateWorkoutAnalysisData() {
+        workoutAnalysisVM.generateTodayAnalysisData()
+        showAnalysisSheet = true
+    }
 
     private func addSet() {
         guard let reps = Int(repsText), !selectedExercise.isEmpty else { return }
@@ -421,6 +456,143 @@ struct HomeView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             showExerciseDetailFromInput = true
         }
+    }
+}
+
+// MARK: - AI分析入口
+
+private struct WorkoutAnalysisButtonCard: View {
+    let isLoading: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button {
+            guard isLoading == false else { return }
+            onTap()
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.16))
+
+                    if isLoading {
+                        ProgressView()
+                            .tint(.green)
+                    } else {
+                        Image(systemName: "sparkle.magnifyingglass")
+                            .font(.title3.weight(.heavy))
+                            .foregroundColor(.green)
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("今日の筋トレ記録を分析")
+                        .font(.headline.weight(.heavy))
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("今日のセット内容をAI分析用データに変換します")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.62))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(.white.opacity(0.56))
+            }
+            .padding(15)
+            .background(Color.white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.green.opacity(0.24), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel("今日の筋トレ記録を分析用データに変換")
+    }
+}
+
+private struct WorkoutAnalysisFailureView: View {
+    let message: String
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 38, weight: .semibold))
+                        .foregroundColor(.orange)
+                        .frame(width: 78, height: 78)
+                        .background(Color.orange.opacity(0.14))
+                        .clipShape(Circle())
+
+                    Text("データを作成できませんでした")
+                        .font(.title3.weight(.heavy))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+
+                    Text(message)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.66))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text("閉じる")
+                            .font(.headline.weight(.heavy))
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.green)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                }
+                .padding(24)
+            }
+            .navigationTitle("AI分析用データ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .fontDesign(.rounded)
+    }
+}
+
+private struct WorkoutAnalysisLoadingView: View {
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                ProgressView()
+                    .tint(.green)
+
+                Text("分析用データを作成しています")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.white.opacity(0.76))
+            }
+        }
+        .fontDesign(.rounded)
     }
 }
 
