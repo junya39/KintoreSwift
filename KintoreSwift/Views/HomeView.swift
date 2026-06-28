@@ -538,9 +538,9 @@ private struct WorkoutAnalysisStateCard: View {
                 .font(.headline.weight(.heavy))
                 .foregroundColor(.white)
 
-            AnalysisTextBlock(title: "summary", text: response.summary, color: .green)
-            AnalysisTextBlock(title: "advice", text: response.advice, color: .mint)
-            AnalysisTextBlock(title: "next_goal", text: response.nextGoal, color: .cyan)
+            AnalysisTextBlock(title: "総評", text: response.summary, color: .green)
+            AnalysisTextBlock(title: "アドバイス", text: response.advice, color: .mint)
+            AnalysisTextBlock(title: "次回の目標", text: response.nextGoal, color: .cyan)
         }
         .padding(15)
         .frame(maxWidth: .infinity, alignment: .leading)
