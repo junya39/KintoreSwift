@@ -23,7 +23,6 @@ struct HomeView: View {
     @State private var addExerciseInitialName = ""
     @State private var buddyMemo = ""
     @StateObject private var workoutAnalysisVM = WorkoutAnalysisViewModel()
-    @State private var showAnalysisSheet = false
 
     // セット記録の入力フォーム
     @State private var showInputSheet = false
@@ -227,6 +226,8 @@ struct HomeView: View {
                             onTap: generateWorkoutAnalysisData
                         )
 
+                        WorkoutAnalysisStateCard(state: workoutAnalysisVM.state)
+
                         IntervalTimerCard()
 
                         ActionDock(
@@ -330,12 +331,6 @@ struct HomeView: View {
                 .presentationDetents([.medium])
                 .preferredColorScheme(.dark)
             }
-            .sheet(isPresented: $showAnalysisSheet, onDismiss: {
-                workoutAnalysisVM.reset()
-            }) {
-                workoutAnalysisSheet
-                    .preferredColorScheme(.dark)
-            }
             .sheet(isPresented: $showInputSheet) {
                 InputFormSection(
                     selectedBodyPart: selectedBodyPart,
@@ -360,26 +355,10 @@ struct HomeView: View {
 
     // MARK: - セット記録
 
-    @ViewBuilder
-    private var workoutAnalysisSheet: some View {
-        switch workoutAnalysisVM.state {
-        case .success(let result):
-            WorkoutAnalysisDebugView(result: result)
-        case .empty(let result):
-            WorkoutAnalysisEmptyView(result: result)
-                .presentationDetents([.medium])
-        case .failure(let message):
-            WorkoutAnalysisFailureView(message: message)
-                .presentationDetents([.medium])
-        case .idle, .loading:
-            WorkoutAnalysisLoadingView()
-                .presentationDetents([.medium])
-        }
-    }
-
     private func generateWorkoutAnalysisData() {
-        workoutAnalysisVM.generateTodayAnalysisData()
-        showAnalysisSheet = true
+        Task {
+            await workoutAnalysisVM.analyzeTodayWorkout()
+        }
     }
 
     private func addSet() {
@@ -493,7 +472,7 @@ private struct WorkoutAnalysisButtonCard: View {
                         .foregroundColor(.white)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("今日のセット内容をAI分析用データに変換します")
+                    Text("DjangoのモックAI分析APIへ送信します")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.white.opacity(0.62))
                         .fixedSize(horizontal: false, vertical: true)
@@ -516,6 +495,125 @@ private struct WorkoutAnalysisButtonCard: View {
         .buttonStyle(.plain)
         .disabled(isLoading)
         .accessibilityLabel("今日の筋トレ記録を分析用データに変換")
+    }
+}
+
+private struct WorkoutAnalysisStateCard: View {
+    let state: WorkoutAnalysisViewModel.AnalysisState
+
+    var body: some View {
+        switch state {
+        case .idle:
+            EmptyView()
+        case .loading:
+            statusCard(
+                icon: "sparkles",
+                title: "分析中...",
+                message: "Djangoサーバーへ今日の筋トレ記録を送信しています。",
+                color: .green,
+                showsProgress: true
+            )
+        case .success(let result):
+            analysisResultCard(result.response)
+        case .empty(let result):
+            statusCard(
+                icon: "doc.text.magnifyingglass",
+                title: result.title,
+                message: result.message,
+                color: .green
+            )
+        case .failure(let message):
+            statusCard(
+                icon: "exclamationmark.triangle.fill",
+                title: "分析に失敗しました",
+                message: message,
+                color: .orange
+            )
+        }
+    }
+
+    private func analysisResultCard(_ response: WorkoutAnalysisResponse) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("AI分析結果")
+                .font(.headline.weight(.heavy))
+                .foregroundColor(.white)
+
+            AnalysisTextBlock(title: "summary", text: response.summary, color: .green)
+            AnalysisTextBlock(title: "advice", text: response.advice, color: .mint)
+            AnalysisTextBlock(title: "next_goal", text: response.nextGoal, color: .cyan)
+        }
+        .padding(15)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.24), lineWidth: 1)
+        )
+    }
+
+    private func statusCard(
+        icon: String,
+        title: String,
+        message: String,
+        color: Color,
+        showsProgress: Bool = false
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.16))
+
+                if showsProgress {
+                    ProgressView()
+                        .tint(color)
+                } else {
+                    Image(systemName: icon)
+                        .font(.headline.weight(.heavy))
+                        .foregroundColor(color)
+                }
+            }
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.subheadline.weight(.heavy))
+                    .foregroundColor(.white)
+
+                Text(message)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.66))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(color.opacity(0.24), lineWidth: 1)
+        )
+    }
+}
+
+private struct AnalysisTextBlock: View {
+    let title: String
+    let text: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption.weight(.heavy))
+                .foregroundColor(color)
+
+            Text(text)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white.opacity(0.82))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

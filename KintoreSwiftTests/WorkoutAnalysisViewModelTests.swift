@@ -43,7 +43,15 @@ struct WorkoutAnalysisViewModelTests {
         )
     }
 
-    @Test func 記録ありでsuccessになり概要値が一致する() {
+    private func mockResponse() -> WorkoutAnalysisResponse {
+        WorkoutAnalysisResponse(
+            summary: "summary",
+            advice: "advice",
+            nextGoal: "next_goal"
+        )
+    }
+
+    @Test func 記録ありでsuccessになり概要値が一致する() async {
         let builder = WorkoutAnalysisDataBuilder()
         let viewModel = WorkoutAnalysisViewModel(
             fetchEntries: { _ in
@@ -53,11 +61,12 @@ struct WorkoutAnalysisViewModelTests {
                 ]
             },
             builder: builder,
+            requestAnalysis: { _ in mockResponse() },
             now: { date(hour: 20, minute: 30) },
             timeZone: { timeZone }
         )
 
-        viewModel.generateTodayAnalysisData()
+        await viewModel.analyzeTodayWorkout()
 
         guard case .success(let result) = viewModel.state else {
             Issue.record("successになる必要があります")
@@ -73,22 +82,24 @@ struct WorkoutAnalysisViewModelTests {
         #expect(result.summary.totalVolumeKg == result.request.totalVolumeKg)
         #expect(result.summary.exerciseCount == result.request.exercises.count)
         #expect(result.jsonText.contains("\"totalSets\" : 2"))
+        #expect(result.response == mockResponse())
     }
 
-    @Test func 記録なしでemptyになる() {
+    @Test func 記録なしでemptyになる() async {
         let viewModel = WorkoutAnalysisViewModel(
             fetchEntries: { _ in [] },
             builder: WorkoutAnalysisDataBuilder(),
+            requestAnalysis: { _ in mockResponse() },
             now: { date(hour: 20) },
             timeZone: { timeZone }
         )
 
-        viewModel.generateTodayAnalysisData()
+        await viewModel.analyzeTodayWorkout()
 
         #expect(viewModel.state == .empty(.today))
     }
 
-    @Test func JSON生成失敗でfailureになる() {
+    @Test func JSON生成失敗でfailureになる() async {
         struct JSONStubError: Error {}
 
         let builder = WorkoutAnalysisDataBuilder()
@@ -102,22 +113,24 @@ struct WorkoutAnalysisViewModelTests {
                     generatedAt: generatedAt
                 )
             },
+            encodeJSON: { _ in throw JSONStubError() },
             encodeJSONString: { _ in throw JSONStubError() },
+            requestAnalysis: { _ in mockResponse() },
             now: { date(hour: 20) },
             timeZone: { timeZone }
         )
 
-        viewModel.generateTodayAnalysisData()
+        await viewModel.analyzeTodayWorkout()
 
         guard case .failure(let message) = viewModel.state else {
             Issue.record("failureになる必要があります")
             return
         }
 
-        #expect(message == "分析用データを作成できませんでした。時間をおいてもう一度お試しください。")
+        #expect(message == "分析に失敗しました。Djangoサーバーが起動しているか確認してください。")
     }
 
-    @Test func 連続実行しても最新の結果へ更新される() {
+    @Test func 連続実行しても最新の結果へ更新される() async {
         var callCount = 0
         let viewModel = WorkoutAnalysisViewModel(
             fetchEntries: { _ in
@@ -131,17 +144,18 @@ struct WorkoutAnalysisViewModelTests {
                 ]
             },
             builder: WorkoutAnalysisDataBuilder(),
+            requestAnalysis: { _ in mockResponse() },
             now: { date(hour: 20) },
             timeZone: { timeZone }
         )
 
-        viewModel.generateTodayAnalysisData()
+        await viewModel.analyzeTodayWorkout()
         guard case .success(let firstResult) = viewModel.state else {
             Issue.record("1回目はsuccessになる必要があります")
             return
         }
 
-        viewModel.generateTodayAnalysisData()
+        await viewModel.analyzeTodayWorkout()
         guard case .success(let secondResult) = viewModel.state else {
             Issue.record("2回目もsuccessになる必要があります")
             return

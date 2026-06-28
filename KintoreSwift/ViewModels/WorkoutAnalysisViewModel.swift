@@ -15,13 +15,16 @@ final class WorkoutAnalysisViewModel: ObservableObject {
         let id = UUID()
         let request: WorkoutAnalysisRequest
         let jsonText: String
+        let response: WorkoutAnalysisResponse
 
         var summary: Summary {
             Summary(request: request)
         }
 
         static func == (lhs: AnalysisResult, rhs: AnalysisResult) -> Bool {
-            lhs.request == rhs.request && lhs.jsonText == rhs.jsonText
+            lhs.request == rhs.request
+                && lhs.jsonText == rhs.jsonText
+                && lhs.response == rhs.response
         }
     }
 
@@ -31,8 +34,8 @@ final class WorkoutAnalysisViewModel: ObservableObject {
         let message: String
 
         static let today = EmptyResult(
-            title: "今日の記録はありません",
-            message: "筋トレを記録すると、ここから分析用データを確認できます。"
+            title: "今日の筋トレ記録がありません",
+            message: "今日の筋トレ記録がありません"
         )
 
         static func == (lhs: EmptyResult, rhs: EmptyResult) -> Bool {
@@ -58,7 +61,9 @@ final class WorkoutAnalysisViewModel: ObservableObject {
 
     private let fetchEntries: (Date) throws -> [SetEntry]
     private let buildRequest: ([SetEntry], Date, TimeZone, Date) -> WorkoutAnalysisRequest
+    private let encodeJSON: (WorkoutAnalysisRequest) throws -> Data
     private let encodeJSONString: (WorkoutAnalysisRequest) throws -> String
+    private let requestAnalysis: (Data) async throws -> WorkoutAnalysisResponse
     private let now: () -> Date
     private let timeZone: () -> TimeZone
 
@@ -73,6 +78,8 @@ final class WorkoutAnalysisViewModel: ObservableObject {
             DatabaseManager.shared.fetchSets(by: date)
         },
         builder: WorkoutAnalysisDataBuilder = WorkoutAnalysisDataBuilder(),
+        apiClient: WorkoutAnalysisAPIClient = WorkoutAnalysisAPIClient(),
+        requestAnalysis: ((Data) async throws -> WorkoutAnalysisResponse)? = nil,
         now: @escaping () -> Date = Date.init,
         timeZone: @escaping () -> TimeZone = { .current }
     ) {
@@ -85,8 +92,14 @@ final class WorkoutAnalysisViewModel: ObservableObject {
                 generatedAt: generatedAt
             )
         }
+        self.encodeJSON = { request in
+            try builder.encodeJSON(request, style: .compact)
+        }
         self.encodeJSONString = { request in
             try builder.encodeJSONString(request, style: .debugPrettyPrinted)
+        }
+        self.requestAnalysis = requestAnalysis ?? { body in
+            try await apiClient.analyze(body: body)
         }
         self.now = now
         self.timeZone = timeZone
@@ -95,22 +108,26 @@ final class WorkoutAnalysisViewModel: ObservableObject {
     init(
         fetchEntries: @escaping (Date) throws -> [SetEntry],
         buildRequest: @escaping ([SetEntry], Date, TimeZone, Date) -> WorkoutAnalysisRequest,
+        encodeJSON: @escaping (WorkoutAnalysisRequest) throws -> Data,
         encodeJSONString: @escaping (WorkoutAnalysisRequest) throws -> String,
+        requestAnalysis: @escaping (Data) async throws -> WorkoutAnalysisResponse,
         now: @escaping () -> Date = Date.init,
         timeZone: @escaping () -> TimeZone = { .current }
     ) {
         self.fetchEntries = fetchEntries
         self.buildRequest = buildRequest
+        self.encodeJSON = encodeJSON
         self.encodeJSONString = encodeJSONString
+        self.requestAnalysis = requestAnalysis
         self.now = now
         self.timeZone = timeZone
     }
 
-    func generateTodayAnalysisData() {
-        generateAnalysisData(for: now())
+    func analyzeTodayWorkout() async {
+        await analyzeWorkout(for: now())
     }
 
-    func generateAnalysisData(for date: Date) {
+    func analyzeWorkout(for date: Date) async {
         state = .loading
 
         do {
@@ -123,13 +140,15 @@ final class WorkoutAnalysisViewModel: ObservableObject {
             let currentTimeZone = timeZone()
             let generatedAt = now()
             let request = buildRequest(entries, date, currentTimeZone, generatedAt)
+            let body = try encodeJSON(request)
             let jsonText = try encodeJSONString(request)
-            state = .success(AnalysisResult(request: request, jsonText: jsonText))
+            let response = try await requestAnalysis(body)
+            state = .success(AnalysisResult(request: request, jsonText: jsonText, response: response))
         } catch {
             #if DEBUG
             print("WorkoutAnalysisViewModel error: \(error)")
             #endif
-            state = .failure("分析用データを作成できませんでした。時間をおいてもう一度お試しください。")
+            state = .failure("分析に失敗しました。Djangoサーバーが起動しているか確認してください。")
         }
     }
 
