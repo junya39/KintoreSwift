@@ -18,10 +18,14 @@ struct HomeView: View {
     @State private var showExercisePickerSheet = false
     @State private var showAddExerciseSheet = false
     @State private var showCalendarSheet = false
+    @State private var showTimerSheet = false
     @State private var pendingShowHistory = false
     @State private var pendingAddExercise = false
     @State private var addExerciseInitialName = ""
-    @State private var buddyMemo = ""
+    @State private var showDexSheet = false
+    @State private var showLevelSheet = false
+    @State private var showQuestSheet = false
+    @State private var showAnalysisSheet = false
     @StateObject private var workoutAnalysisVM = WorkoutAnalysisViewModel()
 
     // セット記録の入力フォーム
@@ -157,6 +161,63 @@ struct HomeView: View {
         }
     }
 
+    private var todayEntries: [SetEntry] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        return viewModel.entries.filter { calendar.startOfDay(for: $0.date) == today }
+    }
+
+    private var todayExerciseCount: Int {
+        Set(todayEntries.map { $0.exercise }).count
+    }
+
+    private var todayVolume: Int {
+        Int(todayEntries.reduce(0) { $0 + ($1.weight * Double($1.reps)) })
+    }
+
+    private var todayBodyParts: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for entry in todayEntries where seen.insert(entry.bodyPart).inserted {
+            result.append(entry.bodyPart)
+        }
+        return result
+    }
+
+    /// 相棒が実用的な案内をするひとこと。状態から決定的に生成する。
+    private var guideMessage: String {
+        if timerVM.isRunning {
+            return "休憩は残り\(remainingTimeText)。終わったら次のセットだ。"
+        }
+
+        if case .success(let result) = workoutAnalysisVM.state {
+            return result.response.summary
+        }
+
+        if homeMetrics.todaySetCount == 0 {
+            if selectedExercise.isEmpty {
+                return "今日は\(selectedBodyPart)トレだ。まずは種目を選ぼう。"
+            }
+            return "今日は\(selectedBodyPart)トレだ。\(selectedExercise)から始めよう！"
+        }
+
+        return "今日は\(homeMetrics.todaySetCount)セット記録済み。AI分析で振り返れるぞ。"
+    }
+
+    private var remainingTimeText: String {
+        let seconds = timerVM.remainingSeconds
+        if seconds >= 60 {
+            return "\(seconds / 60)分\(seconds % 60)秒"
+        }
+        return "\(seconds)秒"
+    }
+
+    private var unlockedMonsterCount: Int {
+        MonsterMasterData.monsters.filter {
+            monsterManager.state.unlockedMonsterIDs.contains($0.id)
+        }.count
+    }
+
     private var selectedExerciseVolumeText: String {
         guard !selectedExercise.isEmpty else { return "--" }
         let total = Int(
@@ -173,28 +234,31 @@ struct HomeView: View {
         }
     }
 
-    private func refreshBuddyMemo() {
-        buddyMemo = BuddyMemoGenerator.generate(
-            monsterName: monsterManager.buddyMonster?.name,
-            hasUnlockedMonsters: monsterManager.unlockedMonsters.isEmpty == false,
-            todaySetCount: homeMetrics.todaySetCount,
-            streakDays: homeMetrics.streakDays,
-            totalVolume: homeMetrics.totalVolume,
-            level: userStatusVM.level,
-            remainingXP: max(userStatusVM.requiredXP(for: userStatusVM.level) - userStatusVM.currentXP, 0),
-            isLevelUpEvent: viewModel.currentLogEvent == .levelUp
-        )
-    }
-
     var body: some View {
         NavigationStack {
             ZStack {
                 HomeStageBackground()
 
+                ScrollViewReader { scrollProxy in
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 18) {
+                    VStack(spacing: 10) {
                         HomeHUDHeader(
                             dateText: todayText,
+                            streakDays: homeMetrics.streakDays,
+                            buddyName: monsterManager.buddyMonster?.name,
+                            hasUnlockedMonsters: monsterManager.unlockedMonsters.isEmpty == false,
+                            onSelectBuddy: { showMonsterSelection = true }
+                        )
+                        .id(HomeScrollAnchor.top)
+
+                        CharacterStage(
+                            buddyMonster: monsterManager.buddyMonster,
+                            hasUnlockedMonsters: monsterManager.unlockedMonsters.isEmpty == false
+                        )
+
+                        GuideBubble(message: guideMessage)
+
+                        StatusBand(
                             level: userStatusVM.level,
                             progress: userStatusVM.getProgress(),
                             currentXP: userStatusVM.currentXP,
@@ -203,47 +267,54 @@ struct HomeView: View {
                             endurance: userStatusVM.endurance
                         )
 
-                        CharacterStage(
-                            buddyMonster: monsterManager.buddyMonster,
-                            hasUnlockedMonsters: monsterManager.unlockedMonsters.isEmpty == false,
-                            onSelectBuddy: { showMonsterSelection = true }
-                        )
-
-                        SpeechBubble(message: buddyMemo) {
-                            refreshBuddyMemo()
-                        }
-
-                        QuickStatsRow(
-                            todaySetCount: homeMetrics.todaySetCount,
-                            streakDays: homeMetrics.streakDays,
-                            totalVolume: homeMetrics.totalVolume
-                        )
-
-                        NextEncounterCard(encounter: nextMonsterEncounter)
-
-                        WorkoutAnalysisButtonCard(
-                            isLoading: workoutAnalysisVM.isLoading,
-                            onTap: generateWorkoutAnalysisData
-                        )
-
-                        WorkoutAnalysisStateCard(state: workoutAnalysisVM.state)
-
-                        IntervalTimerCard()
-
-                        ActionDock(
+                        OperationConsole(
                             selectedBodyPart: selectedBodyPart,
                             selectedExercise: selectedExercise,
                             exerciseVolumeText: selectedExerciseVolumeText,
                             onTapExerciseSelector: { showExercisePickerSheet = true },
-                            onTapCalendar: { showCalendarSheet = true },
-                            onTapAddExercise: { showAddExerciseSheet = true },
-                            onTapBuddy: { showMonsterSelection = true },
+                            onTapEditTimer: { showTimerSheet = true },
                             onTapStart: { showInputSheet = true }
+                        )
+
+                        QuestBannerRow(
+                            encounter: nextMonsterEncounter,
+                            onTap: { showQuestSheet = true }
+                        )
+
+                        CommandGrid(
+                            dexSubtitle: "\(unlockedMonsterCount)/\(MonsterMasterData.monsters.count) 発見",
+                            levelSubtitle: "Lv.\(userStatusVM.level) の成長記録",
+                            onTapDex: { showDexSheet = true },
+                            onTapLevel: { showLevelSheet = true },
+                            onTapHistory: {
+                                selectedDate = Date()
+                                showDayHistory = true
+                            },
+                            onTapAnalysis: { showAnalysisSheet = true },
+                            onTapCalendar: { showCalendarSheet = true },
+                            onTapExerciseManage: { showExercisePickerSheet = true }
+                        )
+
+                        TodaySummaryLine(
+                            exerciseCount: todayExerciseCount,
+                            setCount: homeMetrics.todaySetCount,
+                            volume: todayVolume,
+                            bodyParts: todayBodyParts
                         )
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 28)
+                    .padding(.top, 2)
+                    .padding(.bottom, 14)
+                }
+                .onAppear {
+                    // iOS 26のTabView+ScrollViewで初回表示時にスクロール位置が
+                    // 最下部へ飛ぶことがあるため、表示直後に先頭へ戻す
+                    for delay in [0.05, 0.5, 1.2] {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            scrollProxy.scrollTo(HomeScrollAnchor.top, anchor: .top)
+                        }
+                    }
+                }
                 }
             }
             .fontDesign(.rounded)
@@ -262,17 +333,10 @@ struct HomeView: View {
             .onAppear {
                 viewModel.loadInitialData()
                 normalizeSelection()
-                refreshBuddyMemo()
                 monsterManager.evaluateUnlocks(entries: viewModel.statusEligibleEntries)
             }
             .onChange(of: selectedBodyPart) { _, _ in
                 normalizeSelection()
-            }
-            .onChange(of: viewModel.entries.count) { _, _ in
-                refreshBuddyMemo()
-            }
-            .onChange(of: monsterManager.buddyMonster?.id) { _, _ in
-                refreshBuddyMemo()
             }
             .sheet(isPresented: $showExercisePickerSheet, onDismiss: {
                 if pendingAddExercise {
@@ -298,7 +362,6 @@ struct HomeView: View {
                 addExerciseInitialName = ""
                 viewModel.loadInitialData()
                 normalizeSelection()
-                refreshBuddyMemo()
             }) {
                 HomeAddExerciseView(
                     initialBodyPart: selectedBodyPart,
@@ -331,6 +394,45 @@ struct HomeView: View {
                 .presentationDetents([.medium])
                 .preferredColorScheme(.dark)
             }
+            .sheet(isPresented: $showTimerSheet) {
+                IntervalTimerSheet()
+                    .presentationDetents([.medium])
+                    .preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $showDexSheet) {
+                // MonsterDexViewは自前のNavigationStackを持つためそのまま提示する
+                MonsterDexView()
+                    .presentationDragIndicator(.visible)
+                    .preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $showLevelSheet) {
+                NavigationStack {
+                    LevelView(
+                        viewModel: LevelViewModel(userStatus: userStatusVM)
+                    )
+                    .navigationTitle("レベル")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("閉じる") {
+                                showLevelSheet = false
+                            }
+                        }
+                    }
+                }
+                .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $showQuestSheet) {
+                QuestSheet(encounter: nextMonsterEncounter)
+                    .presentationDetents([.medium])
+                    .preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $showAnalysisSheet) {
+                WorkoutAnalysisSheet(viewModel: workoutAnalysisVM)
+                    .presentationDetents([.medium, .large])
+                    .preferredColorScheme(.dark)
+            }
             .sheet(isPresented: $showInputSheet) {
                 InputFormSection(
                     selectedBodyPart: selectedBodyPart,
@@ -354,12 +456,6 @@ struct HomeView: View {
     }
 
     // MARK: - セット記録
-
-    private func generateWorkoutAnalysisData() {
-        Task {
-            await workoutAnalysisVM.analyzeTodayWorkout()
-        }
-    }
 
     private func addSet() {
         guard let reps = Int(repsText), !selectedExercise.isEmpty else { return }
@@ -438,165 +534,13 @@ struct HomeView: View {
     }
 }
 
-// MARK: - AI分析入口
+// MARK: - スクロールアンカー
 
-private struct WorkoutAnalysisButtonCard: View {
-    let isLoading: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button {
-            guard isLoading == false else { return }
-            onTap()
-        } label: {
-            HStack(alignment: .center, spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.16))
-
-                    if isLoading {
-                        ProgressView()
-                            .tint(.green)
-                    } else {
-                        Image(systemName: "sparkle.magnifyingglass")
-                            .font(.title3.weight(.heavy))
-                            .foregroundColor(.green)
-                    }
-                }
-                .frame(width: 44, height: 44)
-                .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("今日の筋トレ記録を分析")
-                        .font(.headline.weight(.heavy))
-                        .foregroundColor(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("DjangoのモックAI分析APIへ送信します")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.white.opacity(0.62))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(.white.opacity(0.56))
-            }
-            .padding(15)
-            .background(Color.white.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.green.opacity(0.24), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isLoading)
-        .accessibilityLabel("今日の筋トレ記録を分析用データに変換")
-    }
+private enum HomeScrollAnchor {
+    static let top = "homeScrollTop"
 }
 
-private struct WorkoutAnalysisStateCard: View {
-    let state: WorkoutAnalysisViewModel.AnalysisState
-
-    var body: some View {
-        switch state {
-        case .idle:
-            EmptyView()
-        case .loading:
-            statusCard(
-                icon: "sparkles",
-                title: "分析中...",
-                message: "Djangoサーバーへ今日の筋トレ記録を送信しています。",
-                color: .green,
-                showsProgress: true
-            )
-        case .success(let result):
-            analysisResultCard(result.response)
-        case .empty(let result):
-            statusCard(
-                icon: "doc.text.magnifyingglass",
-                title: result.title,
-                message: result.message,
-                color: .green
-            )
-        case .failure(let message):
-            statusCard(
-                icon: "exclamationmark.triangle.fill",
-                title: "分析に失敗しました",
-                message: message,
-                color: .orange
-            )
-        }
-    }
-
-    private func analysisResultCard(_ response: WorkoutAnalysisResponse) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("AI分析結果")
-                .font(.headline.weight(.heavy))
-                .foregroundColor(.white)
-
-            AnalysisTextBlock(title: "総評", text: response.summary, color: .green)
-            AnalysisTextBlock(title: "アドバイス", text: response.advice, color: .mint)
-            AnalysisTextBlock(title: "次回の目標", text: response.nextGoal, color: .cyan)
-        }
-        .padding(15)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.green.opacity(0.24), lineWidth: 1)
-        )
-    }
-
-    private func statusCard(
-        icon: String,
-        title: String,
-        message: String,
-        color: Color,
-        showsProgress: Bool = false
-    ) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(color.opacity(0.16))
-
-                if showsProgress {
-                    ProgressView()
-                        .tint(color)
-                } else {
-                    Image(systemName: icon)
-                        .font(.headline.weight(.heavy))
-                        .foregroundColor(color)
-                }
-            }
-            .frame(width: 38, height: 38)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title)
-                    .font(.subheadline.weight(.heavy))
-                    .foregroundColor(.white)
-
-                Text(message)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.white.opacity(0.66))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(color.opacity(0.24), lineWidth: 1)
-        )
-    }
-}
+// MARK: - AI分析表示部品
 
 private struct AnalysisTextBlock: View {
     let title: String
@@ -617,83 +561,6 @@ private struct AnalysisTextBlock: View {
     }
 }
 
-private struct WorkoutAnalysisFailureView: View {
-    let message: String
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
-
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 38, weight: .semibold))
-                        .foregroundColor(.orange)
-                        .frame(width: 78, height: 78)
-                        .background(Color.orange.opacity(0.14))
-                        .clipShape(Circle())
-
-                    Text("データを作成できませんでした")
-                        .font(.title3.weight(.heavy))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-
-                    Text(message)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.white.opacity(0.66))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button {
-                        dismiss()
-                    } label: {
-                        Text("閉じる")
-                            .font(.headline.weight(.heavy))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.green)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 8)
-                }
-                .padding(24)
-            }
-            .navigationTitle("AI分析用データ")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("閉じる") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-        .fontDesign(.rounded)
-    }
-}
-
-private struct WorkoutAnalysisLoadingView: View {
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
-            VStack(spacing: 14) {
-                ProgressView()
-                    .tint(.green)
-
-                Text("分析用データを作成しています")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(.white.opacity(0.76))
-            }
-        }
-        .fontDesign(.rounded)
-    }
-}
-
 // MARK: - ステージ背景
 
 private struct HomeStageBackground: View {
@@ -701,17 +568,26 @@ private struct HomeStageBackground: View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(red: 0.05, green: 0.09, blue: 0.07),
+                    Color(red: 0.07, green: 0.08, blue: 0.20),
+                    Color(red: 0.03, green: 0.03, blue: 0.10),
                     Color.black
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
 
-            // ステージ上部のほのかな光
+            // ステージ上部のほのかな光（モンスターの後光）
             RadialGradient(
-                colors: [Color.green.opacity(0.14), .clear],
-                center: .init(x: 0.5, y: 0.32),
+                colors: [Color.gamePurple.opacity(0.20), .clear],
+                center: .init(x: 0.5, y: 0.30),
+                startRadius: 10,
+                endRadius: 330
+            )
+
+            // 画面下部にかすかな青の光
+            RadialGradient(
+                colors: [Color.gameBlue.opacity(0.10), .clear],
+                center: .init(x: 0.2, y: 0.95),
                 startRadius: 10,
                 endRadius: 320
             )
@@ -724,79 +600,73 @@ private struct HomeStageBackground: View {
 
 private struct HomeHUDHeader: View {
     let dateText: String
-    let level: Int
-    let progress: Double
-    let currentXP: Int
-    let requiredXP: Int
-    let power: Int
-    let endurance: Int
+    let streakDays: Int
+    let buddyName: String?
+    let hasUnlockedMonsters: Bool
+    let onSelectBuddy: () -> Void
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(dateText)
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(.white.opacity(0.65))
-                    Text("きょうもきたえよう！")
-                        .font(.title3.weight(.heavy))
-                        .foregroundColor(.white)
-                }
+        HStack(alignment: .top) {
+            Text(dateText)
+                .font(.subheadline.weight(.bold))
+                .foregroundColor(.white.opacity(0.75))
 
-                Spacer()
+            Spacer()
 
-                LevelBadge(level: level)
-            }
+            // 右上の情報チップ（連続記録・相棒名）
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 5) {
+                    Image(systemName: "flame.fill")
+                        .font(.caption.weight(.heavy))
+                        .foregroundColor(.orange)
 
-            VStack(spacing: 6) {
-                XPGaugeBar(progress: progress)
-
-                HStack(spacing: 8) {
-                    Text("XP \(currentXP.formatted()) / \(requiredXP.formatted())")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(.white.opacity(0.66))
+                    Text("連続 \(streakDays)日")
+                        .font(.caption.weight(.heavy))
+                        .foregroundColor(.white.opacity(0.9))
                         .monospacedDigit()
+                }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.4))
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.orange.opacity(0.4), lineWidth: 1)
+                )
 
-                    Spacer()
+                if buddyName != nil || hasUnlockedMonsters {
+                    Button {
+                        onSelectBuddy()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "pawprint.fill")
+                                .font(.caption.weight(.heavy))
+                                .foregroundColor(.gameGold)
 
-                    StatChip(icon: "flame.fill", label: "POW", value: power, color: .orange)
-                    StatChip(icon: "bolt.heart.fill", label: "END", value: endurance, color: .cyan)
+                            Text(buddyName ?? "相棒を選ぶ")
+                                .font(.caption.weight(.heavy))
+                                .foregroundColor(.white.opacity(0.9))
+
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.gameGold.opacity(0.9))
+                        }
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.gameGold.opacity(0.4), lineWidth: 1)
+                        )
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(hasUnlockedMonsters == false)
+                    .accessibilityLabel("相棒を選ぶ")
                 }
             }
         }
-    }
-}
-
-private struct LevelBadge: View {
-    let level: Int
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Text("Lv")
-                .font(.caption2.weight(.heavy))
-                .foregroundColor(.green.opacity(0.9))
-            Text("\(level)")
-                .font(.title3.weight(.heavy))
-                .foregroundColor(.white)
-                .monospacedDigit()
-        }
-        .frame(width: 54, height: 54)
-        .background(
-            Circle()
-                .fill(Color.black.opacity(0.55))
-        )
-        .overlay(
-            Circle()
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [.green, .mint],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2.5
-                )
-        )
-        .shadow(color: .green.opacity(0.35), radius: 8, x: 0, y: 0)
     }
 }
 
@@ -812,40 +682,17 @@ private struct XPGaugeBar: View {
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [.green, .mint],
+                            colors: [.gameGold, .gameGoldDeep],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
                     .frame(width: max(geometry.size.width * min(max(progress, 0), 1), 12))
-                    .shadow(color: .green.opacity(0.5), radius: 4, x: 0, y: 0)
+                    .shadow(color: .gameGold.opacity(0.5), radius: 4, x: 0, y: 0)
             }
         }
         .frame(height: 14)
         .animation(.spring(response: 0.6, dampingFraction: 0.8), value: progress)
-    }
-}
-
-private struct StatChip: View {
-    let icon: String
-    let label: String
-    let value: Int
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.caption2.weight(.bold))
-                .foregroundColor(color)
-            Text("\(label) \(value.formatted())")
-                .font(.caption2.weight(.bold))
-                .foregroundColor(.white.opacity(0.88))
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(color.opacity(0.16))
-        .clipShape(Capsule())
     }
 }
 
@@ -854,144 +701,98 @@ private struct StatChip: View {
 private struct CharacterStage: View {
     let buddyMonster: Monster?
     let hasUnlockedMonsters: Bool
-    let onSelectBuddy: () -> Void
 
     @State private var isBobbing = false
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            VStack(spacing: 2) {
-                ZStack {
-                    // キャラクターの背後のグロー
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [Color.green.opacity(0.28), .clear],
-                                center: .center,
-                                startRadius: 10,
-                                endRadius: 150
-                            )
+        VStack(spacing: 0) {
+            ZStack {
+                // キャラクターの背後のグロー
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.gamePurple.opacity(0.32), Color.gameBlue.opacity(0.12), .clear],
+                            center: .center,
+                            startRadius: 10,
+                            endRadius: 105
                         )
-                        .frame(width: 280, height: 280)
+                    )
+                    .frame(width: 200, height: 200)
 
-                    VStack(spacing: -6) {
-                        Group {
-                            if let buddyMonster, UIImage(named: buddyMonster.imageName) != nil {
-                                Image(buddyMonster.imageName)
-                                    .resizable()
-                                    .scaledToFit()
-                            } else {
-                                MonsterPlaceholderIcon()
-                            }
+                VStack(spacing: -5) {
+                    Group {
+                        if let buddyMonster, UIImage(named: buddyMonster.imageName) != nil {
+                            Image(buddyMonster.imageName)
+                                .resizable()
+                                .scaledToFit()
+                        } else {
+                            MonsterPlaceholderIcon()
                         }
-                        .frame(width: 200, height: 200)
-                        .offset(y: isBobbing ? -7 : 5)
+                    }
+                    .frame(width: 165, height: 165)
+                    .offset(y: isBobbing ? -6 : 4)
+                    .animation(
+                        .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
+                        value: isBobbing
+                    )
+
+                    // 足元の影
+                    Ellipse()
+                        .fill(Color.black.opacity(0.5))
+                        .frame(width: isBobbing ? 92 : 106, height: 15)
+                        .blur(radius: 6)
                         .animation(
                             .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
                             value: isBobbing
                         )
-
-                        // 足元の影
-                        Ellipse()
-                            .fill(Color.black.opacity(0.5))
-                            .frame(width: isBobbing ? 110 : 130, height: 20)
-                            .blur(radius: 6)
-                            .animation(
-                                .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
-                                value: isBobbing
-                            )
-                    }
-                }
-
-                // ネームプレート
-                HStack(spacing: 6) {
-                    if buddyMonster != nil {
-                        Image(systemName: "pawprint.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(.green)
-                    }
-                    Text(buddyMonster?.name ?? "相棒を探しに行こう")
-                        .font(.headline.weight(.heavy))
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(Color.black.opacity(0.55))
-                )
-                .overlay(
-                    Capsule()
-                        .strokeBorder(Color.green.opacity(0.45), lineWidth: 1.2)
-                )
-
-                if buddyMonster == nil {
-                    Text(hasUnlockedMonsters ? "右上のボタンで相棒を選べるよ" : "ワークアウトを記録すると最初の相棒に出会えるよ")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(.white.opacity(0.6))
-                        .padding(.top, 8)
                 }
             }
-            .frame(maxWidth: .infinity)
 
-            // 相棒切り替えボタン
-            Button {
-                onSelectBuddy()
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 15, weight: .heavy))
-                    .foregroundColor(hasUnlockedMonsters ? .black : .white.opacity(0.35))
-                    .frame(width: 38, height: 38)
-                    .background(hasUnlockedMonsters ? Color.green : Color.white.opacity(0.1))
-                    .clipShape(Circle())
-                    .shadow(color: hasUnlockedMonsters ? .green.opacity(0.4) : .clear, radius: 6)
+            if buddyMonster == nil {
+                Text(hasUnlockedMonsters ? "右上のボタンから相棒を選べるよ" : "ワークアウトを記録すると最初の相棒に出会えるよ")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.6))
+                    .padding(.top, 4)
             }
-            .disabled(hasUnlockedMonsters == false)
-            .accessibilityLabel("相棒を選ぶ")
         }
+        .frame(maxWidth: .infinity)
         .onAppear {
             isBobbing = true
         }
     }
 }
 
-// MARK: - 吹き出し
+// MARK: - 案内吹き出し
 
-private struct SpeechBubble: View {
+private struct GuideBubble: View {
     let message: String
-    let onTap: () -> Void
 
     var body: some View {
-        Button {
-            onTap()
-        } label: {
-            VStack(spacing: 0) {
-                // キャラクターに向かう吹き出しのしっぽ
-                Triangle()
-                    .fill(Color.white.opacity(0.1))
-                    .frame(width: 18, height: 9)
+        VStack(spacing: 0) {
+            // キャラクターに向かう吹き出しのしっぽ
+            GuideBubbleTail()
+                .fill(Color.white.opacity(0.1))
+                .frame(width: 16, height: 8)
 
-                Text(message.isEmpty ? BuddyMemoGenerator.fallback(monsterName: nil) : message)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(.white.opacity(0.92))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 13)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            }
+            Text(message)
+                .font(.footnote.weight(.bold))
+                .foregroundColor(.white.opacity(0.92))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.gamePurple.opacity(0.25), lineWidth: 1)
+                )
         }
-        .buttonStyle(.plain)
-        .accessibilityHint("タップするとひとことが変わります")
     }
 }
 
-private struct Triangle: Shape {
+private struct GuideBubbleTail: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         path.move(to: CGPoint(x: rect.midX, y: rect.minY))
@@ -1002,69 +803,282 @@ private struct Triangle: Shape {
     }
 }
 
-// MARK: - クイックステータス
+// MARK: - コンパクトステータス帯
 
-private struct QuickStatsRow: View {
-    let todaySetCount: Int
-    let streakDays: Int
-    let totalVolume: Int
+private struct StatusBand: View {
+    let level: Int
+    let progress: Double
+    let currentXP: Int
+    let requiredXP: Int
+    let power: Int
+    let endurance: Int
 
     var body: some View {
-        HStack(spacing: 10) {
-            QuickStatCapsule(
-                icon: "dumbbell.fill",
-                title: "今日",
-                value: "\(todaySetCount)セット",
-                color: .green
+        VStack(spacing: 7) {
+            // 1段目: Lv と POW / END
+            HStack(alignment: .firstTextBaseline) {
+                Text("Lv.\(level)")
+                    .font(.subheadline.weight(.heavy))
+                    .foregroundColor(.gameGold)
+                    .monospacedDigit()
+
+                Spacer()
+
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "flame.fill")
+                            .font(.caption2.weight(.bold))
+                            .foregroundColor(.orange)
+                        Text("POW \(power.formatted())")
+                            .font(.caption.weight(.heavy))
+                            .foregroundColor(.white.opacity(0.9))
+                            .monospacedDigit()
+                    }
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.heart.fill")
+                            .font(.caption2.weight(.bold))
+                            .foregroundColor(.cyan)
+                        Text("END \(endurance.formatted())")
+                            .font(.caption.weight(.heavy))
+                            .foregroundColor(.white.opacity(0.9))
+                            .monospacedDigit()
+                    }
+                }
+            }
+
+            // 2段目: XPバー
+            XPGaugeBar(progress: progress)
+                .frame(height: 8)
+
+            // 3段目: XP数値
+            HStack {
+                Spacer()
+
+                Text("XP \(currentXP.formatted()) / \(requiredXP.formatted())")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.55))
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 13)
+        .padding(.top, 9)
+        .padding(.bottom, 7)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - 司令パネル（クエスト・図鑑・レベル・AI分析・カレンダー）
+
+private struct QuestBannerRow: View {
+    let encounter: NextMonsterEncounter
+    let onTap: () -> Void
+
+    var body: some View {
+        Button {
+            onTap()
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(.gamePurpleLight)
+
+                    Text("クエスト")
+                        .font(.caption.weight(.heavy))
+                        .foregroundColor(.gamePurpleLight)
+
+                    Text(encounter.condition)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.62))
+                        .lineLimit(1)
+
+                    Spacer(minLength: 6)
+
+                    Text(encounter.progressText)
+                        .font(.caption.weight(.heavy))
+                        .foregroundColor(.gameGold)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white.opacity(0.45))
+                }
+
+                XPGaugeBar(progress: encounter.progress)
+                    .frame(height: 6)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.gamePurple.opacity(0.28), lineWidth: 1)
             )
-            QuickStatCapsule(
-                icon: "flame.fill",
-                title: "連続",
-                value: "\(streakDays)日",
-                color: .orange
-            )
-            QuickStatCapsule(
-                icon: "scalemass.fill",
-                title: "総重量",
-                value: "\(totalVolume.formatted())kg",
-                color: .cyan
-            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("クエスト")
+    }
+}
+
+private struct CommandGrid: View {
+    let dexSubtitle: String
+    let levelSubtitle: String
+    let onTapDex: () -> Void
+    let onTapLevel: () -> Void
+    let onTapHistory: () -> Void
+    let onTapAnalysis: () -> Void
+    let onTapCalendar: () -> Void
+    let onTapExerciseManage: () -> Void
+
+    var body: some View {
+        VStack(spacing: 7) {
+            HStack(spacing: 7) {
+                CommandPanelButton(
+                    icon: "book.fill",
+                    title: "図鑑",
+                    subtitle: dexSubtitle,
+                    color: .gameGold,
+                    action: onTapDex
+                )
+
+                CommandPanelButton(
+                    icon: "chart.bar.fill",
+                    title: "レベル",
+                    subtitle: levelSubtitle,
+                    color: .gameGold,
+                    action: onTapLevel
+                )
+            }
+
+            HStack(spacing: 7) {
+                CommandPanelButton(
+                    icon: "clock.arrow.circlepath",
+                    title: "履歴",
+                    subtitle: "過去のトレーニング",
+                    color: .gameGold,
+                    action: onTapHistory
+                )
+
+                CommandPanelButton(
+                    icon: "sparkle.magnifyingglass",
+                    title: "AI分析",
+                    subtitle: "今日の振り返り",
+                    color: .gamePurpleLight,
+                    action: onTapAnalysis
+                )
+            }
+
+            HStack(spacing: 7) {
+                CommandPanelButton(
+                    icon: "calendar",
+                    title: "カレンダー",
+                    subtitle: "日付から探す",
+                    color: .gameGold,
+                    action: onTapCalendar
+                )
+
+                CommandPanelButton(
+                    icon: "dumbbell.fill",
+                    title: "種目管理",
+                    subtitle: "種目の選択・追加",
+                    color: .gamePurpleLight,
+                    action: onTapExerciseManage
+                )
+            }
         }
     }
 }
 
-private struct QuickStatCapsule: View {
+private struct CommandPanelButton: View {
     let icon: String
     let title: String
-    let value: String
+    let subtitle: String
     let color: Color
+    let action: () -> Void
 
     var body: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 4) {
+        Button {
+            action()
+        } label: {
+            HStack(spacing: 9) {
                 Image(systemName: icon)
-                    .font(.caption2.weight(.bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundColor(color)
-                Text(title)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(.white.opacity(0.6))
-            }
+                    .frame(width: 29, height: 29)
+                    .background(color.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 
-            Text(value)
-                .font(.footnote.weight(.heavy))
-                .foregroundColor(.white)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.footnote.weight(.heavy))
+                        .foregroundColor(.white)
+
+                    Text(subtitle)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.55))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(color.opacity(0.2), lineWidth: 1)
+            )
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(color.opacity(0.25), lineWidth: 1)
-        )
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+}
+
+// MARK: - 今日のトレーニングサマリー
+
+private struct TodaySummaryLine: View {
+    let exerciseCount: Int
+    let setCount: Int
+    let volume: Int
+    let bodyParts: [String]
+
+    private var summaryText: String {
+        if setCount == 0 {
+            return "今日はまだ記録がない"
+        }
+        var text = "今日: \(exerciseCount)種目・\(setCount)セット・\(volume.formatted())kg"
+        if bodyParts.isEmpty == false {
+            text += "（\(bodyParts.joined(separator: "・"))）"
+        }
+        return text
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "list.clipboard.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundColor(.gameGold.opacity(0.8))
+
+            Text(summaryText)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.white.opacity(0.6))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4)
     }
 }
 
@@ -1077,56 +1091,355 @@ private struct NextMonsterEncounter {
     let number: Int
 }
 
-private struct NextEncounterCard: View {
+private struct QuestSheet: View {
     let encounter: NextMonsterEncounter
 
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                HStack(spacing: 5) {
-                    Image(systemName: "sparkles")
-                        .font(.caption.weight(.bold))
-                    Text("つぎの出会い")
-                        .font(.caption.weight(.heavy))
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        HStack(spacing: 5) {
+                            Image(systemName: "sparkles")
+                                .font(.caption.weight(.bold))
+                            Text("つぎの出会い")
+                                .font(.caption.weight(.heavy))
+                        }
+                        .foregroundColor(.gamePurpleLight)
+
+                        Spacer()
+
+                        Text(encounter.progressText)
+                            .font(.subheadline.weight(.heavy))
+                            .foregroundColor(.gameGold)
+                    }
+
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("？？？")
+                            .font(.title3.weight(.heavy))
+                            .foregroundColor(.white)
+
+                        Text(encounter.condition)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white.opacity(0.7))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    XPGaugeBar(progress: encounter.progress)
+                        .frame(height: 12)
+
+                    Spacer()
                 }
-                .foregroundColor(.green.opacity(0.9))
-
-                Spacer()
-
-                Text(encounter.progressText)
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(.white.opacity(0.82))
+                .padding(20)
             }
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("？？？")
-                    .font(.headline.weight(.heavy))
-                    .foregroundColor(.white)
-
-                Text(encounter.condition)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(.white.opacity(0.62))
-                    .lineLimit(2)
+            .navigationTitle("クエスト")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
+                        dismiss()
+                    }
+                }
             }
-
-            XPGaugeBar(progress: encounter.progress)
-                .frame(height: 10)
         }
-        .padding(14)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.green.opacity(0.18), lineWidth: 1)
-        )
+        .fontDesign(.rounded)
     }
 }
 
-// MARK: - インターバルタイマー
+// MARK: - 統合操作コンソール（種目・タイマー・スタート）
 
-private struct IntervalTimerCard: View {
+private struct OperationConsole: View {
     @EnvironmentObject private var timerVM: IntervalTimerViewModel
-    @State private var isEditingTimer = false
+
+    let selectedBodyPart: String
+    let selectedExercise: String
+    let exerciseVolumeText: String
+    let onTapExerciseSelector: () -> Void
+    let onTapEditTimer: () -> Void
+    let onTapStart: () -> Void
+
+    private var timerText: String {
+        let minutes = timerVM.remainingSeconds / 60
+        let seconds = timerVM.remainingSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 種目セレクタ
+            Button {
+                onTapExerciseSelector()
+            } label: {
+                HStack(spacing: 10) {
+                    Text(selectedBodyPart)
+                        .font(.caption.weight(.heavy))
+                        .foregroundColor(.gameGold)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.gameGold.opacity(0.15))
+                        .clipShape(Capsule())
+
+                    Text(selectedExercise.isEmpty ? "種目を選択" : selectedExercise)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    Text(exerciseVolumeText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.gameGold.opacity(0.85))
+                        .monospacedDigit()
+
+                    Image(systemName: "chevron.down")
+                        .font(.caption.bold())
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .padding(.horizontal, 13)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("exerciseSelector")
+
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 1)
+                .padding(.horizontal, 13)
+
+            // 大型インターバルタイマー
+            HStack(spacing: 12) {
+                Button {
+                    onTapEditTimer()
+                } label: {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("インターバル")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundColor(.gameGold.opacity(0.85))
+
+                        Text(timerText)
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("タイマー時間を設定")
+
+                Spacer(minLength: 6)
+
+                Button {
+                    timerVM.reset()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.white.opacity(0.9))
+                        .frame(width: 42, height: 42)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("タイマーをリセット")
+
+                Button {
+                    if timerVM.isRunning {
+                        timerVM.stop()
+                    } else {
+                        timerVM.start()
+                    }
+                } label: {
+                    Image(systemName: timerVM.isRunning ? "pause.fill" : "play.fill")
+                        .font(.system(size: 20, weight: .heavy))
+                        .foregroundColor(.black)
+                        .frame(width: 52, height: 52)
+                        .background(
+                            LinearGradient(
+                                colors: [.gameGold, .gameGoldDeep],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(Circle())
+                        .shadow(color: .gameGold.opacity(0.35), radius: 7)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(timerVM.isRunning ? "タイマー停止" : "タイマー開始")
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 8)
+
+            // スタートボタン
+            Button {
+                onTapStart()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "dumbbell.fill")
+                        .font(.headline.weight(.black))
+                    Text("トレーニングスタート！")
+                        .font(.headline.weight(.heavy))
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    LinearGradient(
+                        colors: [.gameGold, .gameGoldDeep],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .shadow(color: .gameGold.opacity(0.3), radius: 8, x: 0, y: 3)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 10)
+            .padding(.top, 2)
+        }
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.gameGold.opacity(0.35), .gamePurple.opacity(0.3)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.2
+                )
+        )
+        .onAppear {
+            timerVM.startTimerIfNeeded()
+        }
+    }
+}
+
+// MARK: - AI分析シート
+
+private struct WorkoutAnalysisSheet: View {
+    @ObservedObject var viewModel: WorkoutAnalysisViewModel
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        stateContent
+
+                        if viewModel.isLoading == false {
+                            Button {
+                                runAnalysis()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "sparkle.magnifyingglass")
+                                        .font(.subheadline.weight(.heavy))
+                                    Text("もう一度分析する")
+                                        .font(.subheadline.weight(.heavy))
+                                }
+                                .foregroundColor(.gamePurpleLight)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.gamePurple.opacity(0.16))
+                                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                        .strokeBorder(Color.gamePurple.opacity(0.4), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("AI分析")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .fontDesign(.rounded)
+        .onAppear {
+            // 開いたら自動で分析する（結果表示済みならそのまま見せる）
+            if viewModel.state == .idle {
+                runAnalysis()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var stateContent: some View {
+        switch viewModel.state {
+        case .idle, .loading:
+            HStack(spacing: 12) {
+                ProgressView()
+                    .tint(.gamePurpleLight)
+
+                Text("今日のトレーニングを分析しています…")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.75))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 20)
+        case .success(let result):
+            VStack(alignment: .leading, spacing: 16) {
+                AnalysisTextBlock(title: "総評", text: result.response.summary, color: .gameGold)
+                AnalysisTextBlock(title: "アドバイス", text: result.response.advice, color: .gamePurpleLight)
+                AnalysisTextBlock(title: "次回の目標", text: result.response.nextGoal, color: .gameBlue)
+            }
+        case .empty(let result):
+            VStack(alignment: .leading, spacing: 8) {
+                Text(result.title)
+                    .font(.subheadline.weight(.heavy))
+                    .foregroundColor(.white)
+
+                Text(result.message)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.66))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .failure(let message):
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.orange)
+
+                Text(message)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func runAnalysis() {
+        Task {
+            await viewModel.analyzeTodayWorkout()
+        }
+    }
+}
+
+// MARK: - インターバルタイマー設定シート
+
+private struct IntervalTimerSheet: View {
+    @EnvironmentObject private var timerVM: IntervalTimerViewModel
+    @Environment(\.dismiss) private var dismiss
+
     @State private var tempMinute = 1
     @State private var tempSecond = 30
     @State private var showTimerSoundInfoAlert = false
@@ -1135,84 +1448,12 @@ private struct IntervalTimerCard: View {
         tempMinute * 60 + tempSecond
     }
 
-    private var displaySeconds: Int {
-        isEditingTimer ? selectedTimerSeconds : timerVM.remainingSeconds
-    }
-
-    private var timerText: String {
-        let minutes = displaySeconds / 60
-        let seconds = displaySeconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                HStack(spacing: 5) {
-                    Image(systemName: "timer")
-                        .font(.caption.weight(.bold))
-                    Text("インターバルタイマー")
-                        .font(.caption.weight(.heavy))
-                }
-                .foregroundColor(.green.opacity(0.9))
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
 
-                Spacer()
-
-                Text(timerText)
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .onTapGesture(perform: beginEditingTimer)
-            }
-
-            HStack(alignment: .center, spacing: 10) {
-                Spacer()
-
-                if !isEditingTimer {
-                    Button {
-                        showTimerSoundInfoAlert = true
-                    } label: {
-                        Image(systemName: "info.circle")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Circle())
-                    }
-
-                    Button {
-                        if timerVM.isRunning {
-                            timerVM.stop()
-                        } else {
-                            timerVM.start()
-                        }
-                    } label: {
-                        Text(timerVM.isRunning ? "停止" : "開始")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(minWidth: 76, minHeight: 44)
-                            .padding(.horizontal, 4)
-                            .background(Color.accent)
-                            .clipShape(Capsule())
-                    }
-
-                    Button {
-                        timerVM.reset()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Circle())
-                    }
-                }
-            }
-
-            if isEditingTimer {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     HStack(spacing: 0) {
                         Picker("", selection: $tempMinute) {
                             ForEach(0...60, id: \.self) { value in
@@ -1223,7 +1464,6 @@ private struct IntervalTimerCard: View {
                         }
                         .pickerStyle(.wheel)
                         .colorScheme(.dark)
-                        .tint(.green)
                         .frame(maxWidth: .infinity)
                         .onChange(of: tempMinute) { _, _ in
                             timerVM.updateDuration(selectedTimerSeconds)
@@ -1238,179 +1478,70 @@ private struct IntervalTimerCard: View {
                         }
                         .pickerStyle(.wheel)
                         .colorScheme(.dark)
-                        .tint(.green)
                         .frame(maxWidth: .infinity)
                         .onChange(of: tempSecond) { _, _ in
                             timerVM.updateDuration(selectedTimerSeconds)
                         }
                     }
-                    .frame(height: 200)
+                    .frame(height: 190)
 
-                    Button("完了") {
-                        finishEditingTimer()
+                    Button {
+                        if selectedTimerSeconds > 0 {
+                            timerVM.updateDuration(selectedTimerSeconds)
+                            timerVM.reset()
+                        }
+                        dismiss()
+                    } label: {
+                        Text("この時間にセットする")
+                            .font(.headline.weight(.heavy))
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                LinearGradient(
+                                    colors: [.gameGold, .gameGoldDeep],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                     }
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(.black)
+                    .buttonStyle(.plain)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.accent)
-                    .clipShape(Capsule())
                 }
-                .transition(.move(edge: .bottom))
+                .padding(.vertical, 8)
+            }
+            .navigationTitle("インターバルタイマー")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showTimerSoundInfoAlert = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .tint(.gameGold)
+                }
+            }
+            .alert("通知音について", isPresented: $showTimerSoundInfoAlert) {
+                Button("閉じる", role: .cancel) {}
+            } message: {
+                Text("アプリを開いている時は、マナーモードでもタイマー音が鳴ります。\n\nアプリを閉じている時や画面OFF時は、iPhoneの通知設定とマナーモードに従うため、タイマー音が鳴らない場合があります。")
             }
         }
-        .padding(18)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.green.opacity(0.18), lineWidth: 1)
-        )
-        .animation(.easeInOut(duration: 0.2), value: isEditingTimer)
+        .fontDesign(.rounded)
         .onAppear {
-            timerVM.startTimerIfNeeded()
+            timerVM.stop()
+            let total = min(timerVM.duration, 3600)
+            tempMinute = total / 60
+            tempSecond = total % 60
         }
-        .alert("通知音について", isPresented: $showTimerSoundInfoAlert) {
-            Button("閉じる", role: .cancel) {}
-        } message: {
-            Text("アプリを開いている時は、マナーモードでもタイマー音が鳴ります。\n\nアプリを閉じている時や画面OFF時は、iPhoneの通知設定とマナーモードに従うため、タイマー音が鳴らない場合があります。")
-        }
-    }
-
-    private func beginEditingTimer() {
-        timerVM.stop()
-        let total = min(timerVM.duration, 3600)
-        tempMinute = total / 60
-        tempSecond = total % 60
-        isEditingTimer = true
-    }
-
-    private func finishEditingTimer() {
-        let newValue = tempMinute * 60 + tempSecond
-        if newValue > 0 {
-            timerVM.updateDuration(newValue)
-            timerVM.reset()
-        }
-        isEditingTimer = false
-    }
-}
-
-// MARK: - アクションドック
-
-private struct ActionDock: View {
-    let selectedBodyPart: String
-    let selectedExercise: String
-    let exerciseVolumeText: String
-    let onTapExerciseSelector: () -> Void
-    let onTapCalendar: () -> Void
-    let onTapAddExercise: () -> Void
-    let onTapBuddy: () -> Void
-    let onTapStart: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            // 種目セレクタ
-            Button {
-                onTapExerciseSelector()
-            } label: {
-                HStack(spacing: 10) {
-                    Text(selectedBodyPart)
-                        .font(.caption.weight(.heavy))
-                        .foregroundColor(.green)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.green.opacity(0.15))
-                        .clipShape(Capsule())
-
-                    Text(selectedExercise.isEmpty ? "種目を選択" : selectedExercise)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Text(exerciseVolumeText)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(.green.opacity(0.85))
-                        .monospacedDigit()
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption.bold())
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Color.black.opacity(0.4))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("exerciseSelector")
-
-            // スタートボタン
-            Button {
-                onTapStart()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "dumbbell.fill")
-                        .font(.headline.weight(.black))
-                    Text("トレーニングスタート！")
-                        .font(.headline.weight(.heavy))
-                }
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    LinearGradient(
-                        colors: [.green, .mint],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .shadow(color: .green.opacity(0.35), radius: 10, x: 0, y: 4)
-            }
-            .buttonStyle(.plain)
-
-            // サブアクション
-            HStack(spacing: 10) {
-                DockButton(icon: "calendar", title: "カレンダー", action: onTapCalendar)
-                DockButton(icon: "plus.circle.fill", title: "種目追加", action: onTapAddExercise)
-                DockButton(icon: "pawprint.fill", title: "相棒", action: onTapBuddy)
-            }
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
-        )
-    }
-}
-
-private struct DockButton: View {
-    let icon: String
-    let title: String
-    let action: () -> Void
-
-    var body: some View {
-        Button {
-            action()
-        } label: {
-            VStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.green)
-                Text(title)
-                    .font(.caption2.weight(.bold))
-                    .foregroundColor(.white.opacity(0.85))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(Color.black.opacity(0.35))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -1463,103 +1594,27 @@ private struct HomeCalendarSheet: View {
     }
 }
 
-// MARK: - ひとこと生成
-
-private enum BuddyMemoGenerator {
-    static func generate(
-        monsterName: String?,
-        hasUnlockedMonsters: Bool,
-        todaySetCount: Int,
-        streakDays: Int,
-        totalVolume: Int,
-        level: Int,
-        remainingXP: Int,
-        isLevelUpEvent: Bool
-    ) -> String {
-        guard let monsterName else {
-            return hasUnlockedMonsters
-                ? "相棒にしたいモンスターがこちらを見ている。"
-                : "まだ見ぬモンスターの気配がする。最初の記録を待っている。"
-        }
-
-        if isLevelUpEvent {
-            return [
-                "\(monsterName)は、Lv\(level)になったあなたを誇らしげに見ている。",
-                "\(monsterName)は、新しいレベルまで来た努力をちゃんと覚えている。",
-                "\(monsterName)は、成長したあなたを静かに見守っている。"
-            ].randomElement() ?? fallback(monsterName: monsterName)
-        }
-
-        var candidates: [String] = []
-
-        if todaySetCount == 0 {
-            candidates.append(contentsOf: [
-                "\(monsterName)は、今日の最初の1セットを待っている。",
-                "\(monsterName)は、まだ今日の記録がないことに気づいている。",
-                "\(monsterName)は、今日のスタートを静かに待っている。"
-            ])
-        } else {
-            candidates.append(contentsOf: [
-                "\(monsterName)は、今日の\(todaySetCount)セットをちゃんと覚えている。",
-                "\(monsterName)は、今日積み上げた\(todaySetCount)セットを見てうなずいている。",
-                "\(monsterName)は、今日の\(todaySetCount)セット分だけあなたが進んだことを知っている。"
-            ])
-        }
-
-        if streakDays >= 2 {
-            candidates.append(contentsOf: [
-                "\(monsterName)は、\(streakDays)日連続の努力を見逃していない。",
-                "\(monsterName)は、\(streakDays)日連続で続いていることを覚えている。",
-                "\(monsterName)は、\(streakDays)日続けたあなたを誇らしげに見ている。"
-            ])
-        }
-
-        if totalVolume >= 1 {
-            let volumeText = totalVolume.formatted()
-            candidates.append(contentsOf: [
-                "\(monsterName)は、これまでに\(volumeText)kg分の努力を見てきた。",
-                "\(monsterName)は、積み上げた\(volumeText)kgの重みを知っている。",
-                "\(monsterName)は、あなたが動かしてきた\(volumeText)kgを覚えている。"
-            ])
-        }
-
-        candidates.append(contentsOf: [
-            "\(monsterName)は、Lv\(level)まで来たあなたを見ている。",
-            "\(monsterName)は、Lv\(level)の努力をちゃんと覚えている。",
-            "\(monsterName)は、次のレベルまであと\(remainingXP.formatted())XPだと知っている。"
-        ])
-
-        candidates.append(contentsOf: [
-            "\(monsterName)がじっとこちらを見ている。",
-            "\(monsterName)は今日のトレーニングを待っている。",
-            "\(monsterName)が小さくうなずいた。",
-            "\(monsterName)は少しだけ強くなった気がする。",
-            "\(monsterName)はバーベルを見つめている。",
-            "\(monsterName)はまだ本気を出していない。",
-            "\(monsterName)がこちらに気合いを送っている。",
-            "\(monsterName)は次のセットを楽しみにしている。",
-            "\(monsterName)は静かに燃えている。",
-            "\(monsterName)は今日も成長したがっている。"
-        ])
-
-        return candidates.randomElement() ?? fallback(monsterName: monsterName)
-    }
-
-    static func fallback(monsterName: String?) -> String {
-        guard let monsterName else { return "相棒がこちらを見ている。" }
-        return "\(monsterName)がこちらを見ている。"
-    }
-}
-
 private struct MonsterPlaceholderIcon: View {
     var body: some View {
         Image(systemName: "pawprint")
             .font(.system(size: 34, weight: .semibold))
-            .foregroundColor(.green)
+            .foregroundColor(.gameGold)
             .frame(width: 96, height: 96)
-            .background(Color.green.opacity(0.15))
+            .background(Color.gameGold.opacity(0.15))
             .clipShape(Circle())
     }
+}
+
+// MARK: - ゲームテーマパレット
+
+private extension Color {
+    /// メインアクセント（金）
+    static let gameGold = Color(red: 1.0, green: 0.8, blue: 0.35)
+    static let gameGoldDeep = Color(red: 0.96, green: 0.6, blue: 0.18)
+    /// サブアクセント（紫・青）
+    static let gamePurple = Color(red: 0.6, green: 0.42, blue: 0.98)
+    static let gamePurpleLight = Color(red: 0.78, green: 0.66, blue: 1.0)
+    static let gameBlue = Color(red: 0.42, green: 0.64, blue: 1.0)
 }
 
 // MARK: - 相棒選択
@@ -1636,7 +1691,7 @@ private struct BuddyCandidateCard: View {
                 if isBuddy {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.title3)
-                        .foregroundColor(.green)
+                        .foregroundColor(.gameGold)
                 } else {
                     Image(systemName: "circle")
                         .font(.title3)
@@ -1644,12 +1699,12 @@ private struct BuddyCandidateCard: View {
                 }
             }
             .padding(12)
-            .background(isBuddy ? Color.green.opacity(0.14) : Color.white.opacity(0.08))
+            .background(isBuddy ? Color.gameGold.opacity(0.14) : Color.white.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(
-                        isBuddy ? Color.green.opacity(0.45) : Color.white.opacity(0.07),
+                        isBuddy ? Color.gameGold.opacity(0.45) : Color.white.opacity(0.07),
                         lineWidth: 1.2
                     )
             )
@@ -1733,7 +1788,7 @@ private struct HomeExercisePickerSheet: View {
                                         .padding(.vertical, 12)
                                         .background(
                                             LinearGradient(
-                                                colors: [.green, .mint],
+                                                colors: [.gameGold, .gameGoldDeep],
                                                 startPoint: .leading,
                                                 endPoint: .trailing
                                             )
@@ -1751,7 +1806,7 @@ private struct HomeExercisePickerSheet: View {
                                     VStack(alignment: .leading, spacing: 8) {
                                         Text(section.bodyPart)
                                             .font(.caption.weight(.bold))
-                                            .foregroundColor(.green)
+                                            .foregroundColor(.gameGold)
                                             .padding(.horizontal, 4)
 
                                         VStack(spacing: 8) {
@@ -1767,7 +1822,7 @@ private struct HomeExercisePickerSheet: View {
                                                             .multilineTextAlignment(.leading)
                                                         Spacer()
                                                         Image(systemName: "plus.circle.fill")
-                                                            .foregroundColor(.green)
+                                                            .foregroundColor(.gameGold)
                                                     }
                                                     .padding(.vertical, 12)
                                                     .padding(.horizontal, 14)
@@ -1812,7 +1867,7 @@ private struct HomeExercisePickerSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: "plus.circle.fill")
                     .font(.subheadline.weight(.black))
-                    .foregroundColor(.green)
+                    .foregroundColor(.gameGold)
                 Text("新しい種目を追加")
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(.white)
@@ -1823,11 +1878,11 @@ private struct HomeExercisePickerSheet: View {
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 14)
-            .background(Color.green.opacity(0.12))
+            .background(Color.gameGold.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.green.opacity(0.3), lineWidth: 1)
+                    .strokeBorder(Color.gameGold.opacity(0.3), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -1892,7 +1947,7 @@ private struct HomeAddExerciseView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("部位")
                             .font(.caption.weight(.bold))
-                            .foregroundColor(.green)
+                            .foregroundColor(.gameGold)
 
                         LazyVGrid(columns: bodyPartColumns, spacing: 8) {
                             ForEach(bodyPartOrder, id: \.self) { part in
@@ -1904,7 +1959,7 @@ private struct HomeAddExerciseView: View {
                                         .foregroundColor(bodyPart == part ? .black : .white.opacity(0.85))
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(bodyPart == part ? Color.green : Color.white.opacity(0.08))
+                                        .background(bodyPart == part ? Color.gameGold : Color.white.opacity(0.08))
                                         .clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
@@ -1915,7 +1970,7 @@ private struct HomeAddExerciseView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("種目名")
                             .font(.caption.weight(.bold))
-                            .foregroundColor(.green)
+                            .foregroundColor(.gameGold)
 
                         TextField("例: インクラインベンチプレス", text: $exerciseName)
                             .textInputAutocapitalization(.never)
@@ -1949,7 +2004,7 @@ private struct HomeAddExerciseView: View {
                             LinearGradient(
                                 colors: trimmedName.isEmpty
                                     ? [Color.white.opacity(0.18), Color.white.opacity(0.18)]
-                                    : [.green, .mint],
+                                    : [.gameGold, .gameGoldDeep],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
