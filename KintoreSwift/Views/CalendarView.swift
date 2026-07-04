@@ -13,17 +13,17 @@ struct CalendarView: UIViewRepresentable {
         calendar.dataSource = context.coordinator
 
         calendar.appearance.headerDateFormat = "MMMM yyyy"
-        calendar.appearance.todayColor = UIColor.systemGreen.withAlphaComponent(0.8)
-        calendar.appearance.selectionColor = .white
+        calendar.appearance.todayColor = UIColor.gameGoldUI.withAlphaComponent(0.85)
+        calendar.appearance.selectionColor = .gameGoldDeepUI
         calendar.appearance.titleSelectionColor = .black
         calendar.appearance.titleTodayColor = .black
         calendar.appearance.headerTitleColor = .white
         calendar.appearance.weekdayTextColor = UIColor.white.withAlphaComponent(0.85)
         calendar.appearance.titleDefaultColor = UIColor.white.withAlphaComponent(0.88)
         calendar.appearance.titlePlaceholderColor = UIColor.white.withAlphaComponent(0.35)
-        calendar.appearance.headerTitleFont = .systemFont(ofSize: 17, weight: .bold)
-        calendar.appearance.weekdayFont = .systemFont(ofSize: 16, weight: .semibold)
-        calendar.appearance.titleFont = .systemFont(ofSize: 15, weight: .medium)
+        calendar.appearance.headerTitleFont = .rounded(ofSize: 17, weight: .bold)
+        calendar.appearance.weekdayFont = .rounded(ofSize: 16, weight: .semibold)
+        calendar.appearance.titleFont = .rounded(ofSize: 15, weight: .medium)
         calendar.scrollDirection = .horizontal
         calendar.scope = .month
         calendar.locale = Locale(identifier: "ja_JP")
@@ -74,12 +74,12 @@ struct CalendarView: UIViewRepresentable {
 
         func calendar(_ calendar: FSCalendar, numberOfEventsFor date: Date) -> Int { 0 }
 
-        // ✅ 記録がある日は見やすい青で塗る
+        // ✅ 記録がある日はゲームテーマの紫で塗る
         func calendar(_ calendar: FSCalendar,
                       appearance: FSCalendarAppearance,
                       fillDefaultColorFor date: Date) -> UIColor? {
             let key = keyFormatter.string(from: date)
-            return markedKeys.contains(key) ? UIColor.systemBlue.withAlphaComponent(0.75) : nil
+            return markedKeys.contains(key) ? UIColor.gamePurpleUI.withAlphaComponent(0.75) : nil
         }
 
         func calendar(_ calendar: FSCalendar,
@@ -88,5 +88,14 @@ struct CalendarView: UIViewRepresentable {
             let key = keyFormatter.string(from: date)
             return markedKeys.contains(key) ? .white : UIColor.white.withAlphaComponent(0.88)
         }
+    }
+}
+
+private extension UIFont {
+    /// Home画面と同じ丸ゴシック系（rounded）のフォントを返す
+    static func rounded(ofSize size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let descriptor = base.fontDescriptor.withDesign(.rounded) else { return base }
+        return UIFont(descriptor: descriptor, size: size)
     }
 }

@@ -3,6 +3,7 @@ import UIKit
 
 struct MonsterDexView: View {
     @EnvironmentObject private var monsterManager: MonsterManager
+    @Environment(\.dismiss) private var dismiss
 
     private var sortedMonsters: [Monster] {
         MonsterMasterData.monsters.sorted { lhs, rhs in
@@ -23,15 +24,26 @@ struct MonsterDexView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    Text("解放済み \(unlockedCount) / \(MonsterMasterData.monsters.count)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.green.opacity(0.9))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(Capsule())
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "book.fill")
+                            .font(.caption.weight(.heavy))
+                            .foregroundColor(.gameGold)
+
+                        Text("発見 \(unlockedCount) / \(MonsterMasterData.monsters.count)")
+                            .font(.caption.weight(.heavy))
+                            .foregroundColor(.white.opacity(0.9))
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.4))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Color.gameGold.opacity(0.4), lineWidth: 1)
+                    )
 
                     ForEach(sortedMonsters) { monster in
                         MonsterDexRow(
@@ -41,15 +53,23 @@ struct MonsterDexView: View {
                         )
                     }
                 }
-                .padding()
+                .padding(16)
             }
             .background(Color.black)
-            .navigationTitle("MonsterDex")
+            .navigationTitle("図鑑")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
+                        dismiss()
+                    }
+                }
+            }
             .onAppear {
                 evaluateUnlocksFromStoredRecords()
             }
         }
+        .fontDesign(.rounded)
     }
 
     /// 過去の記録だけで条件を満たしているモンスターを、図鑑を開いたタイミングで解放する
@@ -72,9 +92,10 @@ private struct MonsterDexRow: View {
                 Text(monster.displayNumber)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.white.opacity(0.55))
+                    .monospacedDigit()
 
                 Text(isUnlocked ? monster.name : "???")
-                    .font(.headline.weight(.bold))
+                    .font(.headline.weight(.heavy))
                     .foregroundColor(.white)
 
                 Text(isUnlocked ? monster.nickname : lockedHint(for: monster))
@@ -86,27 +107,27 @@ private struct MonsterDexRow: View {
                     if isUnlocked {
                         MonsterDexBadge(
                             text: monster.type.displayName,
-                            color: .blue,
+                            color: .gameBlue,
                             foregroundColor: .white
                         )
 
                         MonsterDexBadge(
                             text: monster.stageDisplayName,
-                            color: .purple,
+                            color: .gamePurple,
                             foregroundColor: .white
                         )
                     }
 
                     MonsterDexBadge(
-                        text: isUnlocked ? "解放済み" : "未解放",
-                        color: isUnlocked ? .green : .white.opacity(0.28),
-                        foregroundColor: .white
+                        text: isUnlocked ? "発見済み" : "未発見",
+                        color: isUnlocked ? .gameGold : .white.opacity(0.28),
+                        foregroundColor: isUnlocked ? .black : .white
                     )
 
                     if isBuddy {
                         MonsterDexBadge(
                             text: "相棒中",
-                            color: .yellow,
+                            color: .gameGold,
                             foregroundColor: .black
                         )
                     }
@@ -131,8 +152,15 @@ private struct MonsterDexRow: View {
             Spacer()
         }
         .padding(12)
-        .background(isUnlocked ? Color.green.opacity(0.14) : Color.white.opacity(0.08))
-        .cornerRadius(14)
+        .background(isUnlocked ? Color.gameGold.opacity(0.1) : Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(
+                    isUnlocked ? Color.gameGold.opacity(0.3) : Color.white.opacity(0.08),
+                    lineWidth: 1
+                )
+        )
     }
 
     private var nextEvolutionText: String? {

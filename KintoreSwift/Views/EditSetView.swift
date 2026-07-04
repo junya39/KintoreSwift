@@ -14,7 +14,7 @@ struct EditSetView: View {
     @State private var note = ""
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 TextField("重量 (kg)", text: $weight)
                     .keyboardType(.decimalPad)
@@ -32,9 +32,10 @@ struct EditSetView: View {
                 TextField("メモ", text: $note)
             }
             .navigationTitle("記録を編集")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("キャンセル") {
+                    Button("閉じる") {
                         dismiss()
                     }
                 }
@@ -45,6 +46,8 @@ struct EditSetView: View {
                 }
             }
         }
+        .fontDesign(.rounded)
+        .tint(.gameGold)
         .onAppear {
             // 既存データを State にコピー
             weight = weightText(entry.weight)

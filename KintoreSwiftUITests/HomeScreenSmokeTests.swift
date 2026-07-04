@@ -24,8 +24,8 @@ final class HomeScreenSmokeTests: XCTestCase {
         }
 
         XCTAssertTrue(
-            app.staticTexts["きょうもきたえよう！"].waitForExistence(timeout: 5),
-            "HUDヘッダーが表示されること"
+            app.staticTexts["クエスト"].waitForExistence(timeout: 5),
+            "クエストバナーが表示されること"
         )
         XCTAssertTrue(
             app.staticTexts["トレーニングスタート！"].waitForExistence(timeout: 3),

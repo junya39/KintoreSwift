@@ -47,7 +47,13 @@ struct WorkoutAnalysisDebugView: View {
                         .foregroundColor(.black)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 9)
-                        .background(Color.green)
+                        .background(
+                            LinearGradient(
+                                colors: [.gameGold, .gameGoldDeep],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .clipShape(Capsule())
                         .padding(.bottom, 18)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -80,11 +86,11 @@ struct WorkoutAnalysisDebugView: View {
             ],
             spacing: 10
         ) {
-            SummaryTile(title: "対象日", value: summary.analysisDate, color: .green)
-            SummaryTile(title: "合計セット数", value: "\(summary.totalSets)セット", color: .mint)
-            SummaryTile(title: "合計回数", value: "\(summary.totalReps)回", color: .cyan)
-            SummaryTile(title: "総ボリューム", value: "\(formatVolume(summary.totalVolumeKg))kg", color: .orange)
-            SummaryTile(title: "種目数", value: "\(summary.exerciseCount)種目", color: .green)
+            SummaryTile(title: "対象日", value: summary.analysisDate, color: .gameGold)
+            SummaryTile(title: "合計セット数", value: "\(summary.totalSets)セット", color: .gamePurpleLight)
+            SummaryTile(title: "合計回数", value: "\(summary.totalReps)回", color: .gameBlue)
+            SummaryTile(title: "総ボリューム", value: "\(formatVolume(summary.totalVolumeKg))kg", color: .gameGold)
+            SummaryTile(title: "種目数", value: "\(summary.exerciseCount)種目", color: .gamePurpleLight)
         }
     }
 
@@ -93,7 +99,7 @@ struct WorkoutAnalysisDebugView: View {
             HStack {
                 Text("JSON")
                     .font(.caption.weight(.heavy))
-                    .foregroundColor(.green.opacity(0.9))
+                    .foregroundColor(.gamePurpleLight)
 
                 Spacer()
 
@@ -108,7 +114,13 @@ struct WorkoutAnalysisDebugView: View {
                     .foregroundColor(.black)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 7)
-                    .background(Color.green)
+                    .background(
+                        LinearGradient(
+                            colors: [.gameGold, .gameGoldDeep],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -191,11 +203,11 @@ struct WorkoutAnalysisEmptyView: View {
                 Color.black.ignoresSafeArea()
 
                 VStack(spacing: 16) {
-                    Image(systemName: "doc.text.magnifyingglass")
+                    Image(systemName: "sparkle.magnifyingglass")
                         .font(.system(size: 42, weight: .semibold))
-                        .foregroundColor(.green)
+                        .foregroundColor(.gamePurpleLight)
                         .frame(width: 78, height: 78)
-                        .background(Color.green.opacity(0.14))
+                        .background(Color.gamePurple.opacity(0.16))
                         .clipShape(Circle())
 
                     Text(result.title)
@@ -217,8 +229,14 @@ struct WorkoutAnalysisEmptyView: View {
                             .foregroundColor(.black)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Color.green)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .background(
+                                LinearGradient(
+                                    colors: [.gameGold, .gameGoldDeep],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 8)
