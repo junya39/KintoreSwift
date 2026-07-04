@@ -23,27 +23,65 @@ struct HistoryView: View {
 
     private var dateTitle: String {
         let f = DateFormatter()
-        f.dateFormat = "yyyy.MM.dd"
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M月d日（E）"
         return f.string(from: selectedDate)
+    }
+
+    private var exerciseCount: Int {
+        Set(viewModel.entries.map { $0.exercise }).count
+    }
+
+    private var totalVolume: Int {
+        Int(viewModel.entries.reduce(0) { $0 + ($1.weight * Double($1.reps)) })
     }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
 
                     // 日付
-                    Text(dateTitle)
-                        .font(.largeTitle.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.title3.weight(.heavy))
+                            .foregroundColor(.gameGold)
+
+                        Text(dateTitle)
+                            .font(.title.weight(.heavy))
+                            .foregroundColor(.white)
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 16)
 
                     if viewModel.entries.isEmpty {
-                        Text("この日の記録はありません")
-                            .foregroundColor(.white.opacity(0.6))
-                            .padding(.horizontal, 16)
+                        VStack(spacing: 8) {
+                            Image(systemName: "moon.zzz.fill")
+                                .font(.title2.weight(.bold))
+                                .foregroundColor(.gamePurpleLight)
+
+                            Text("この日の記録はありません")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 28)
+                        .background(Color.white.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                        .padding(.horizontal, 16)
+                    } else {
+                        HistorySummaryBand(
+                            exerciseCount: exerciseCount,
+                            setCount: viewModel.entries.count,
+                            volume: totalVolume
+                        )
+                        .padding(.horizontal, 16)
                     }
 
                     ForEach(viewModel.entries) { entry in
@@ -57,7 +95,7 @@ struct HistoryView: View {
                 .padding(.bottom, 32)
             }
         }
-        .navigationTitle("")
+        .fontDesign(.rounded)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -66,6 +104,7 @@ struct HistoryView: View {
                     Image(systemName: "plus")
                         .font(.system(size: 16, weight: .bold))
                 }
+                .tint(.gameGold)
             }
         }
         .onAppear {
@@ -76,6 +115,7 @@ struct HistoryView: View {
                 DatabaseManager.shared.updateSet(updated)
                 reload()
             }
+            .presentationDragIndicator(.visible)
             .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showAddSheet) {
@@ -94,6 +134,7 @@ struct HistoryView: View {
                 )
                 reload()
             }
+            .presentationDragIndicator(.visible)
             .preferredColorScheme(.dark)
         }
     }
@@ -101,6 +142,45 @@ struct HistoryView: View {
     private func reload() {
         contentViewModel.loadInitialData()
         viewModel.load(date: selectedDate)
+    }
+}
+
+private struct HistorySummaryBand: View {
+    let exerciseCount: Int
+    let setCount: Int
+    let volume: Int
+
+    var body: some View {
+        HStack(spacing: 0) {
+            summaryItem(icon: "dumbbell.fill", value: "\(exerciseCount)", unit: "種目")
+            summaryItem(icon: "checkmark.circle.fill", value: "\(setCount)", unit: "セット")
+            summaryItem(icon: "scalemass.fill", value: volume.formatted(), unit: "kg")
+        }
+        .padding(.vertical, 11)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.gameGold.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func summaryItem(icon: String, value: String, unit: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.bold))
+                .foregroundColor(.gameGold)
+
+            Text(value)
+                .font(.subheadline.weight(.heavy))
+                .foregroundColor(.white)
+                .monospacedDigit()
+
+            Text(unit)
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.white.opacity(0.55))
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -113,23 +193,24 @@ private struct DaySetRow: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(entry.exercise)
-                        .font(.headline)
+                        .font(.headline.weight(.heavy))
                         .foregroundColor(.white)
 
                     Spacer()
 
                     Text(entry.bodyPart)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.green)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.green.opacity(0.16))
+                        .font(.caption.weight(.heavy))
+                        .foregroundColor(.gameGold)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.gameGold.opacity(0.15))
                         .clipShape(Capsule())
                 }
 
                 Text(setText)
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.white.opacity(0.86))
+                    .monospacedDigit()
 
                 if let note = entry.note, note.isEmpty == false {
                     Text(note)
@@ -139,8 +220,12 @@ private struct DaySetRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
-            .background(Color.card)
-            .cornerRadius(16)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            )
             .padding(.horizontal, 16)
         }
         .buttonStyle(.plain)
@@ -188,7 +273,7 @@ private struct DaySetAddView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Picker("部位", selection: $bodyPart) {
                     ForEach(availableBodyParts, id: \.self) { part in
@@ -218,9 +303,10 @@ private struct DaySetAddView: View {
                 TextField("メモ", text: $note)
             }
             .navigationTitle("記録を追加")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("キャンセル") {
+                    Button("閉じる") {
                         dismiss()
                     }
                 }
@@ -246,6 +332,8 @@ private struct DaySetAddView: View {
                 normalizeSelection()
             }
         }
+        .fontDesign(.rounded)
+        .tint(.gameGold)
     }
 
     private func normalizeSelection() {

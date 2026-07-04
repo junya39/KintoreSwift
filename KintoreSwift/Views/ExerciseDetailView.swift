@@ -116,6 +116,8 @@ struct ExerciseDetailView: View {
                     }
                     viewModel.load(exercise: exerciseName)
                 }
+                .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
             }
         }
 

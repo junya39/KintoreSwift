@@ -11,6 +11,7 @@ struct InputFormSection: View {
     @ObservedObject private var toastCenter = XPToastCenter.shared
     @ObservedObject private var monsterToastCenter = MonsterUnlockToastCenter.shared
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
+    @Environment(\.dismiss) private var dismiss
     @State private var levelUpOverlayEvent: LevelUpEvent?
     @State private var titleUnlockOverlayTitle: Title?
 
@@ -26,26 +27,12 @@ struct InputFormSection: View {
     let onAdd: () -> Void
 
     var body: some View {
+        NavigationStack {
         ZStack {
             ZStack {
-                LinearGradient(
-                    colors: [Color.cardSub, Color.bg],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
+                Color.black.ignoresSafeArea()
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(width: 44, height: 5)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
-
-                    Text("セットを記録")
-                        .font(.title3.bold())
-                        .foregroundColor(.white)
-
                     if let item = toastCenter.current {
                         HStack(spacing: 12) {
                             Image(systemName: "bolt.fill")
@@ -82,14 +69,14 @@ struct InputFormSection: View {
                         HStack(spacing: 12) {
                             Image(systemName: "pawprint.fill")
                                 .font(.title3.weight(.black))
-                                .foregroundStyle(.green)
+                                .foregroundStyle(Color.gameGold)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.title)
                                     .font(.subheadline.weight(.bold))
                                     .foregroundStyle(.white)
                                 Text(item.monsterName)
                                     .font(.title3.weight(.heavy))
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(Color.gameGold)
                             }
                         }
                         .padding(.horizontal, 22)
@@ -100,26 +87,26 @@ struct InputFormSection: View {
                         )
                         .overlay(
                             Capsule()
-                                .strokeBorder(.green.opacity(0.55), lineWidth: 1.2)
+                                .strokeBorder(Color.gameGold.opacity(0.55), lineWidth: 1.2)
                         )
-                        .shadow(color: .green.opacity(0.3), radius: 16, x: 0, y: 0)
+                        .shadow(color: .gameGold.opacity(0.3), radius: 16, x: 0, y: 0)
                         .shadow(color: .black.opacity(0.4), radius: 16, x: 0, y: 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
                     HStack(spacing: 8) {
                         Text(selectedBodyPart)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.accent)
+                            .font(.caption.weight(.heavy))
+                            .foregroundColor(.gameGold)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(Color.accent.opacity(0.15))
+                            .background(Color.gameGold.opacity(0.15))
                             .clipShape(Capsule())
 
                         Button(action: onTapExercise) {
                             HStack(spacing: 4) {
                                 Text(selectedExercise.isEmpty ? "種目未選択" : selectedExercise)
-                                    .font(.headline)
+                                    .font(.headline.weight(.heavy))
                                     .foregroundColor(.white)
                                     .lineLimit(1)
                                 Image(systemName: "chevron.right")
@@ -131,7 +118,8 @@ struct InputFormSection: View {
                     }
 
                     Toggle("自重トレーニング", isOn: $isBodyweight)
-                        .tint(.accent)
+                        .tint(.gameGold)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundColor(.white.opacity(0.9))
 
                     Picker("左右", selection: $selectedSide) {
@@ -147,42 +135,60 @@ struct InputFormSection: View {
                             .disabled(isBodyweight)
                             .padding(.vertical, 14)
                             .padding(.horizontal, 14)
-                            .background(Color.card)
+                            .background(Color.white.opacity(0.09))
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                            )
 
                         TextField("回数", text: $repsText)
                             .keyboardType(.numberPad)
                             .focused($focusedField, equals: .reps)
                             .padding(.vertical, 14)
                             .padding(.horizontal, 14)
-                            .background(Color.card)
+                            .background(Color.white.opacity(0.09))
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                            )
 
                         TextField("メモ", text: $note)
                             .padding(.vertical, 14)
                             .padding(.horizontal, 14)
-                            .background(Color.card)
+                            .background(Color.white.opacity(0.09))
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                            )
                     }
                     .foregroundColor(.white)
 
                     Button(action: onAdd) {
-                        Text("このセットを追加")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(
-                                LinearGradient(
-                                    colors: [Color.accent.opacity(0.95), Color.accent.opacity(0.75)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.headline.weight(.black))
+                            Text("このセットを追加")
+                                .font(.headline.weight(.heavy))
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                colors: [.gameGold, .gameGoldDeep],
+                                startPoint: .leading,
+                                endPoint: .trailing
                             )
-                            .foregroundColor(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .shadow(color: .gameGold.opacity(0.3), radius: 8, x: 0, y: 3)
                     }
                 }
                 .padding(.horizontal, 16)
+                .padding(.top, 14)
                 .padding(.bottom, 20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
@@ -199,6 +205,17 @@ struct InputFormSection: View {
                 .zIndex(998)
             }
         }
+        .navigationTitle("セットを記録")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("閉じる") {
+                    dismiss()
+                }
+            }
+        }
+        }
+        .fontDesign(.rounded)
         .onReceive(userStatusVM.$levelUpEvent) { event in
             guard let event else { return }
             levelUpOverlayEvent = event

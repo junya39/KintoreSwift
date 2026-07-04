@@ -318,10 +318,6 @@ struct HomeView: View {
                 }
             }
             .fontDesign(.rounded)
-            .navigationDestination(isPresented: $showDayHistory) {
-                HistoryView(selectedDate: selectedDate)
-                    .environmentObject(viewModel)
-            }
             .navigationDestination(isPresented: $showExerciseDetailFromInput) {
                 if selectedExercise.isEmpty == false {
                     ExerciseDetailView(
@@ -356,6 +352,7 @@ struct HomeView: View {
                         pendingAddExercise = true
                     }
                 )
+                .presentationDragIndicator(.visible)
                 .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showAddExerciseSheet, onDismiss: {
@@ -373,11 +370,13 @@ struct HomeView: View {
                     selectedExercise = name
                 }
                 .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
                 .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showMonsterSelection) {
                 MonsterBuddySelectionView(monsterManager: monsterManager)
                     .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
                     .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showCalendarSheet, onDismiss: {
@@ -392,11 +391,31 @@ struct HomeView: View {
                     onSelectDate: { pendingShowHistory = true }
                 )
                 .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $showDayHistory) {
+                NavigationStack {
+                    HistoryView(selectedDate: selectedDate)
+                        .environmentObject(viewModel)
+                        .navigationTitle("履歴")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("閉じる") {
+                                    showDayHistory = false
+                                }
+                            }
+                        }
+                }
+                .fontDesign(.rounded)
+                .presentationDragIndicator(.visible)
                 .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showTimerSheet) {
                 IntervalTimerSheet()
                     .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
                     .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showDexSheet) {
@@ -426,11 +445,13 @@ struct HomeView: View {
             .sheet(isPresented: $showQuestSheet) {
                 QuestSheet(encounter: nextMonsterEncounter)
                     .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
                     .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showAnalysisSheet) {
                 WorkoutAnalysisSheet(viewModel: workoutAnalysisVM)
                     .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
                     .preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showInputSheet) {
@@ -449,7 +470,7 @@ struct HomeView: View {
                     onAdd: addSet
                 )
                 .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.hidden)
+                .presentationDragIndicator(.visible)
                 .preferredColorScheme(.dark)
             }
         }
@@ -667,32 +688,6 @@ private struct HomeHUDHeader: View {
                 }
             }
         }
-    }
-}
-
-private struct XPGaugeBar: View {
-    let progress: Double
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.white.opacity(0.12))
-
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [.gameGold, .gameGoldDeep],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: max(geometry.size.width * min(max(progress, 0), 1), 12))
-                    .shadow(color: .gameGold.opacity(0.5), radius: 4, x: 0, y: 0)
-            }
-        }
-        .frame(height: 14)
-        .animation(.spring(response: 0.6, dampingFraction: 0.8), value: progress)
     }
 }
 
@@ -1569,8 +1564,12 @@ private struct HomeCalendarSheet: View {
                         markedDates: markedDates
                     )
                     .frame(height: 240)
-                    .background(Color.card)
-                    .cornerRadius(16)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    )
 
                     Spacer()
                 }
@@ -1603,18 +1602,6 @@ private struct MonsterPlaceholderIcon: View {
             .background(Color.gameGold.opacity(0.15))
             .clipShape(Circle())
     }
-}
-
-// MARK: - ゲームテーマパレット
-
-private extension Color {
-    /// メインアクセント（金）
-    static let gameGold = Color(red: 1.0, green: 0.8, blue: 0.35)
-    static let gameGoldDeep = Color(red: 0.96, green: 0.6, blue: 0.18)
-    /// サブアクセント（紫・青）
-    static let gamePurple = Color(red: 0.6, green: 0.42, blue: 0.98)
-    static let gamePurpleLight = Color(red: 0.78, green: 0.66, blue: 1.0)
-    static let gameBlue = Color(red: 0.42, green: 0.64, blue: 1.0)
 }
 
 // MARK: - 相棒選択
@@ -1826,8 +1813,12 @@ private struct HomeExercisePickerSheet: View {
                                                     }
                                                     .padding(.vertical, 12)
                                                     .padding(.horizontal, 14)
-                                                    .background(Color.card)
+                                                    .background(Color.white.opacity(0.06))
                                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                                                    )
                                                 }
                                                 .buttonStyle(.plain)
                                             }

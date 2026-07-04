@@ -268,7 +268,7 @@ struct WorkoutView: View {
                         onAdd: addSet
                     )
                     .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.hidden)
+                    .presentationDragIndicator(.visible)
                     .preferredColorScheme(.dark)
                 case .addExercise:
                     VStack(spacing: 16) {
