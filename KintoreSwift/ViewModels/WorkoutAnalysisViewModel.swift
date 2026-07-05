@@ -156,6 +156,9 @@ final class WorkoutAnalysisViewModel: ObservableObject {
                     // 保存済みトークンが無効。Home側でログアウト処理とログイン誘導を行う
                     state = .failure("ログインの有効期限が切れました。もう一度ログインしてください。")
                     sessionExpired = true
+                } else if code == "monthly_limit_exceeded" {
+                    // 開発者向け文言ではなく、ユーザー向けの案内を表示する
+                    state = .failure("今月の無料AI分析回数を使い切りました。\nプレミアム機能は今後追加予定です。")
                 } else {
                     state = .failure(message)
                 }
