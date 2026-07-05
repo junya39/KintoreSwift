@@ -288,6 +288,7 @@ struct HomeView: View {
                         CommandGrid(
                             dexSubtitle: "\(unlockedMonsterCount)/\(MonsterMasterData.monsters.count) 発見",
                             levelSubtitle: "Lv.\(userStatusVM.level) の成長記録",
+                            analysisSubtitle: analysisSubtitle,
                             onTapDex: { showDexSheet = true },
                             onTapLevel: { showLevelSheet = true },
                             onTapHistory: {
@@ -334,6 +335,20 @@ struct HomeView: View {
                 viewModel.loadInitialData()
                 normalizeSelection()
                 monsterManager.evaluateUnlocks(entries: viewModel.statusEligibleEntries)
+            }
+            .task {
+                // 起動時（ログイン済みなら）残り回数を取得する
+                if authVM.isAuthenticated {
+                    await workoutAnalysisVM.refreshUsage()
+                }
+            }
+            .onChange(of: authVM.isAuthenticated) { _, isAuthenticated in
+                // ログイン直後に残り回数を取得し、ログアウトで表示を消す
+                if isAuthenticated {
+                    Task { await workoutAnalysisVM.refreshUsage() }
+                } else {
+                    workoutAnalysisVM.clearUsage()
+                }
             }
             .onChange(of: selectedBodyPart) { _, _ in
                 normalizeSelection()
@@ -564,6 +579,20 @@ struct HomeView: View {
         DispatchQueue.main.async {
             focusedInputField = .reps
         }
+    }
+
+    /// AI分析ボタンのサブタイトル（残り回数チップ）
+    private var analysisSubtitle: String {
+        if authVM.isAuthenticated == false {
+            return "ログインでAI分析"
+        }
+        guard let usage = workoutAnalysisVM.usage else {
+            return "今日の振り返り"
+        }
+        if usage.remaining > 0 {
+            return "残り\(usage.remaining)回"
+        }
+        return "今月の無料分は使い切りました"
     }
 
     /// AI分析はログイン必須。未ログイン時はAPIを叩かずログイン誘導する
@@ -989,6 +1018,7 @@ private struct QuestBannerRow: View {
 private struct CommandGrid: View {
     let dexSubtitle: String
     let levelSubtitle: String
+    let analysisSubtitle: String
     let onTapDex: () -> Void
     let onTapLevel: () -> Void
     let onTapHistory: () -> Void
@@ -1028,7 +1058,7 @@ private struct CommandGrid: View {
                 CommandPanelButton(
                     icon: "sparkle.magnifyingglass",
                     title: "AI分析",
-                    subtitle: "今日の振り返り",
+                    subtitle: analysisSubtitle,
                     color: .gamePurpleLight,
                     action: onTapAnalysis
                 )
