@@ -148,7 +148,11 @@ final class WorkoutAnalysisViewModel: ObservableObject {
             #if DEBUG
             print("WorkoutAnalysisViewModel error: \(error)")
             #endif
-            state = .failure("分析に失敗しました。Djangoサーバーが起動しているか確認してください。")
+            if case WorkoutAnalysisAPIClient.APIError.server(_, let message) = error {
+                state = .failure(message)
+            } else {
+                state = .failure("分析に失敗しました。通信環境を確認して、時間をおいて再度お試しください。")
+            }
         }
     }
 

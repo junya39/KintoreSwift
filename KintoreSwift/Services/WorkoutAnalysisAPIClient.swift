@@ -17,6 +17,8 @@ struct WorkoutAnalysisAPIClient {
         case invalidURL
         case invalidResponse
         case badStatusCode(Int, String)
+        /// サーバーが返したユーザー向けエラー（error.code / error.message）
+        case server(code: String, message: String)
 
         var errorDescription: String? {
             switch self {
@@ -26,8 +28,19 @@ struct WorkoutAnalysisAPIClient {
                 return "Workout analysis response was not HTTPURLResponse."
             case .badStatusCode(let statusCode, let body):
                 return "Workout analysis API returned status \(statusCode): \(body)"
+            case .server(let code, let message):
+                return "Workout analysis API error \(code): \(message)"
             }
         }
+    }
+
+    private struct ServerErrorPayload: Decodable {
+        struct Detail: Decodable {
+            let code: String
+            let message: String
+        }
+
+        let error: Detail
     }
 
     private let baseURL: String
@@ -70,6 +83,10 @@ struct WorkoutAnalysisAPIClient {
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
+            // サーバーのエラーJSONに日本語メッセージが入っていればそれを優先する
+            if let payload = try? decoder.decode(ServerErrorPayload.self, from: data) {
+                throw APIError.server(code: payload.error.code, message: payload.error.message)
+            }
             let bodyText = String(decoding: data, as: UTF8.self)
             throw APIError.badStatusCode(httpResponse.statusCode, bodyText)
         }
