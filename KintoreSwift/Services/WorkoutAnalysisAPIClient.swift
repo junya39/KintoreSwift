@@ -43,6 +43,12 @@ struct WorkoutAnalysisAPIClient {
         let error: Detail
     }
 
+    /// 回数制限などのフラット形式エラー（{"error": "monthly_limit_exceeded", "message": ...}）
+    private struct FlatServerErrorPayload: Decodable {
+        let error: String
+        let message: String?
+    }
+
     private let baseURL: String
     private let session: URLSession
     private let decoder: JSONDecoder
@@ -94,6 +100,9 @@ struct WorkoutAnalysisAPIClient {
             // サーバーのエラーJSONに日本語メッセージが入っていればそれを優先する
             if let payload = try? decoder.decode(ServerErrorPayload.self, from: data) {
                 throw APIError.server(code: payload.error.code, message: payload.error.message)
+            }
+            if let payload = try? decoder.decode(FlatServerErrorPayload.self, from: data) {
+                throw APIError.server(code: payload.error, message: payload.message ?? "")
             }
             let bodyText = String(decoding: data, as: UTF8.self)
             throw APIError.badStatusCode(httpResponse.statusCode, bodyText)
