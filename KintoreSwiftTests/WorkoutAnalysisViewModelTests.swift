@@ -127,7 +127,40 @@ struct WorkoutAnalysisViewModelTests {
             return
         }
 
-        #expect(message == "分析に失敗しました。Djangoサーバーが起動しているか確認してください。")
+        #expect(message == "分析に失敗しました。通信環境を確認して、時間をおいて再度お試しください。")
+    }
+
+    @Test func サーバーエラー時はサーバーのメッセージを表示する() async {
+        let viewModel = WorkoutAnalysisViewModel(
+            fetchEntries: { _ in [entry()] },
+            buildRequest: { entries, analysisDate, timeZone, generatedAt in
+                WorkoutAnalysisDataBuilder().buildRequest(
+                    entries: entries,
+                    analysisDate: analysisDate,
+                    timeZone: timeZone,
+                    generatedAt: generatedAt
+                )
+            },
+            encodeJSON: { _ in Data() },
+            encodeJSONString: { _ in "{}" },
+            requestAnalysis: { _ in
+                throw WorkoutAnalysisAPIClient.APIError.server(
+                    code: "AI_ANALYSIS_FAILED",
+                    message: "AI分析に失敗しました。時間をおいて再度お試しください。"
+                )
+            },
+            now: { date(hour: 20) },
+            timeZone: { timeZone }
+        )
+
+        await viewModel.analyzeTodayWorkout()
+
+        guard case .failure(let message) = viewModel.state else {
+            Issue.record("failureになる必要があります")
+            return
+        }
+
+        #expect(message == "AI分析に失敗しました。時間をおいて再度お試しください。")
     }
 
     @Test func 連続実行しても最新の結果へ更新される() async {
