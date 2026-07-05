@@ -1,0 +1,102 @@
+// AuthViewModel.swift
+// ログイン状態の管理。トークンはKeychainにのみ保存し、printやログには出さない。
+
+import Foundation
+import Combine
+
+@MainActor
+final class AuthViewModel: ObservableObject {
+    @Published private(set) var isAuthenticated = false
+    @Published private(set) var currentUser: AuthUser?
+    @Published private(set) var isLoading = false
+    @Published var errorMessage: String?
+
+    private let api: AuthAPIClient
+    private let tokenStore: AuthTokenStoring
+
+    init(
+        api: AuthAPIClient = AuthAPIClient(),
+        tokenStore: AuthTokenStoring = KeychainTokenStore()
+    ) {
+        self.api = api
+        self.tokenStore = tokenStore
+    }
+
+    /// 起動時の復元: Keychainのトークンを /api/auth/me/ で検証する
+    func restoreSession() async {
+        guard let token = tokenStore.load() else {
+            isAuthenticated = false
+            currentUser = nil
+            return
+        }
+
+        do {
+            let user = try await api.me(token: token)
+            currentUser = user
+            isAuthenticated = true
+        } catch {
+            // トークン失効・削除済みなどはKeychainから消して未ログインに戻す。
+            // 通信エラー（サーバー未起動等）ではトークンを消さず、次回起動時に再検証する。
+            if case AuthAPIClient.APIError.server = error {
+                tokenStore.delete()
+            }
+            isAuthenticated = false
+            currentUser = nil
+        }
+    }
+
+    func login(email: String, password: String) async -> Bool {
+        await authenticate {
+            try await self.api.login(email: email, password: password)
+        }
+    }
+
+    func register(email: String, password: String, passwordConfirm: String) async -> Bool {
+        await authenticate {
+            try await self.api.register(
+                email: email,
+                password: password,
+                passwordConfirm: passwordConfirm
+            )
+        }
+    }
+
+    func logout() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        // サーバー側のトークン失効はベストエフォート（失敗してもローカルは必ずログアウト）
+        if let token = tokenStore.load() {
+            try? await api.logout(token: token)
+        }
+
+        tokenStore.delete()
+        isAuthenticated = false
+        currentUser = nil
+        errorMessage = nil
+    }
+
+    private func authenticate(_ operation: @escaping () async throws -> AuthResponse) async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            let response = try await operation()
+            tokenStore.save(response.token)
+            currentUser = response.user
+            isAuthenticated = true
+            return true
+        } catch {
+            errorMessage = Self.userMessage(for: error)
+            return false
+        }
+    }
+
+    private static func userMessage(for error: Error) -> String {
+        if case AuthAPIClient.APIError.server(_, let message) = error {
+            return message
+        }
+        return "通信に失敗しました。通信環境を確認して、時間をおいて再度お試しください。"
+    }
+}

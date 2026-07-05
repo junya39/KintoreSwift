@@ -9,6 +9,7 @@ struct KintoreSwiftApp: App {
     @StateObject private var userStatusVM = UserStatusViewModel()
     @StateObject private var monsterManager = MonsterManager()
     @StateObject private var workoutTimerVM = IntervalTimerViewModel()
+    @StateObject private var authVM = AuthViewModel()
 
     init() {
         configureAudioSession()
@@ -21,6 +22,11 @@ struct KintoreSwiftApp: App {
                 .environmentObject(userStatusVM)
                 .environmentObject(monsterManager)
                 .environmentObject(workoutTimerVM)
+                .environmentObject(authVM)
+                .task {
+                    // 起動時にKeychainのトークンを検証してログイン状態を復元する
+                    await authVM.restoreSession()
+                }
         }
     }
 
