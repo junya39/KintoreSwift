@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 開発用: 同一Wi-Fi上のMacで動くDjango（http://192.168.x.x:8000）への平文HTTP通信を許可する。
+	     ローカルネットワーク限定の緩和であり、インターネット上のHTTPは引き続きブロックされる。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- 実機からMac上の開発サーバーへ接続する際、iOSのローカルネットワーク許可ダイアログに表示される説明文 -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>開発用サーバー（同じWi-Fi上のMac）に接続してAI分析を行うために使用します。</string>
+</dict>
+</plist>
