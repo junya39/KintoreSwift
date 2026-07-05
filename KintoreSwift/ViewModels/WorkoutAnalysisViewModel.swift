@@ -69,6 +69,9 @@ final class WorkoutAnalysisViewModel: ObservableObject {
 
     @Published private(set) var state: AnalysisState = .idle
 
+    /// AI分析APIが401を返した（保存済みトークンが無効）。Home側でログイン誘導に使う
+    @Published var sessionExpired = false
+
     var isLoading: Bool {
         state == .loading
     }
@@ -148,8 +151,14 @@ final class WorkoutAnalysisViewModel: ObservableObject {
             #if DEBUG
             print("WorkoutAnalysisViewModel error: \(error)")
             #endif
-            if case WorkoutAnalysisAPIClient.APIError.server(_, let message) = error {
-                state = .failure(message)
+            if case WorkoutAnalysisAPIClient.APIError.server(let code, let message) = error {
+                if code == "UNAUTHORIZED" {
+                    // 保存済みトークンが無効。Home側でログアウト処理とログイン誘導を行う
+                    state = .failure("ログインの有効期限が切れました。もう一度ログインしてください。")
+                    sessionExpired = true
+                } else {
+                    state = .failure(message)
+                }
             } else {
                 state = .failure("分析に失敗しました。通信環境を確認して、時間をおいて再度お試しください。")
             }

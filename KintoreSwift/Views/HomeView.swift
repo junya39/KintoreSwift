@@ -294,7 +294,7 @@ struct HomeView: View {
                                 selectedDate = Date()
                                 showDayHistory = true
                             },
-                            onTapAnalysis: { showAnalysisSheet = true },
+                            onTapAnalysis: { openAnalysis() },
                             onTapCalendar: { showCalendarSheet = true },
                             onTapExerciseManage: { showExercisePickerSheet = true }
                         )
@@ -337,6 +337,16 @@ struct HomeView: View {
             }
             .onChange(of: selectedBodyPart) { _, _ in
                 normalizeSelection()
+            }
+            .onChange(of: workoutAnalysisVM.sessionExpired) { _, expired in
+                guard expired else { return }
+                // 保存済みトークンが無効（401）: ログアウトしてログイン誘導する
+                workoutAnalysisVM.sessionExpired = false
+                showAnalysisSheet = false
+                authVM.invalidateSession(message: "ログインの有効期限が切れました。もう一度ログインしてください。")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    showAccountSheet = true
+                }
             }
             .sheet(isPresented: $showExercisePickerSheet, onDismiss: {
                 if pendingAddExercise {
@@ -553,6 +563,16 @@ struct HomeView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         DispatchQueue.main.async {
             focusedInputField = .reps
+        }
+    }
+
+    /// AI分析はログイン必須。未ログイン時はAPIを叩かずログイン誘導する
+    private func openAnalysis() {
+        if authVM.isAuthenticated {
+            showAnalysisSheet = true
+        } else {
+            authVM.errorMessage = "AI分析を使うにはログインが必要です。"
+            showAccountSheet = true
         }
     }
 

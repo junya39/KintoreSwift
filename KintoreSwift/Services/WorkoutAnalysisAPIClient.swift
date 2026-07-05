@@ -46,15 +46,18 @@ struct WorkoutAnalysisAPIClient {
     private let baseURL: String
     private let session: URLSession
     private let decoder: JSONDecoder
+    private let tokenProvider: () -> String?
 
     init(
         baseURL: String = APIConfig.baseURL,
         session: URLSession = .shared,
-        decoder: JSONDecoder = JSONDecoder()
+        decoder: JSONDecoder = JSONDecoder(),
+        tokenProvider: @escaping () -> String? = { KeychainTokenStore().load() }
     ) {
         self.baseURL = baseURL
         self.session = session
         self.decoder = decoder
+        self.tokenProvider = tokenProvider
     }
 
     func analyze(body: Data) async throws -> WorkoutAnalysisResponse {
@@ -67,6 +70,11 @@ struct WorkoutAnalysisAPIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
         request.timeoutInterval = 15
+
+        // AI分析はログイン必須。Keychainのトークンを付与する（トークンはログに出さない）
+        if let token = tokenProvider() {
+            request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
+        }
 
         let (data, response): (Data, URLResponse)
         do {
