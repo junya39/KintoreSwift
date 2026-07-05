@@ -8,18 +8,11 @@ struct HistoryView: View {
     let selectedDate: Date
     @StateObject private var viewModel = HistoryViewModel()
     @EnvironmentObject private var contentViewModel: ContentViewModel
-    @State private var editingEntry = SetEntry(
-        id: -1,
-        date: Date(),
-        bodyPart: "",
-        exercise: "",
-        weight: 0,
-        reps: 0,
-        note: nil,
-        side: ""
-    )
-    @State private var showEditSheet = false
     @State private var showAddSheet = false
+
+    // 種目カードタップで種目別履歴へ遷移する
+    @State private var exerciseForDetail = ""
+    @State private var showExerciseDetail = false
 
     private var dateTitle: String {
         let f = DateFormatter()
@@ -86,8 +79,8 @@ struct HistoryView: View {
 
                     ForEach(viewModel.entries) { entry in
                         DaySetRow(entry: entry) {
-                            editingEntry = entry
-                            showEditSheet = true
+                            exerciseForDetail = entry.exercise
+                            showExerciseDetail = true
                         }
                     }
                 }
@@ -110,13 +103,13 @@ struct HistoryView: View {
         .onAppear {
             reload()
         }
-        .sheet(isPresented: $showEditSheet) {
-            EditSetView(entry: $editingEntry) { updated in
-                DatabaseManager.shared.updateSet(updated)
-                reload()
+        .navigationDestination(isPresented: $showExerciseDetail) {
+            if exerciseForDetail.isEmpty == false {
+                ExerciseDetailView(
+                    exerciseName: exerciseForDetail,
+                    contentViewModel: contentViewModel
+                )
             }
-            .presentationDragIndicator(.visible)
-            .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showAddSheet) {
             DaySetAddView(
@@ -205,6 +198,10 @@ private struct DaySetRow: View {
                         .padding(.vertical, 5)
                         .background(Color.gameGold.opacity(0.15))
                         .clipShape(Capsule())
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.45))
                 }
 
                 Text(setText)
