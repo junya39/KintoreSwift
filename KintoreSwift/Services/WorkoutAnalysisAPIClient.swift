@@ -12,6 +12,15 @@ struct WorkoutAnalysisResponse: Codable, Equatable, Sendable {
     }
 }
 
+/// 今月のAI分析使用状況（無料回数制限）
+struct AnalysisUsageInfo: Codable, Equatable, Sendable {
+    let limit: Int
+    let used: Int
+    let remaining: Int
+    let year: Int
+    let month: Int
+}
+
 struct WorkoutAnalysisAPIClient {
     enum APIError: Error, LocalizedError {
         case invalidURL
@@ -117,5 +126,34 @@ struct WorkoutAnalysisAPIClient {
             #endif
             throw error
         }
+    }
+
+    /// 今月のAI分析使用状況を取得する（要ログイン）
+    func fetchUsage() async throws -> AnalysisUsageInfo {
+        guard let url = URL(string: "\(baseURL)/api/workout-analysis/usage/") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        if let token = tokenProvider() {
+            request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            if let payload = try? decoder.decode(ServerErrorPayload.self, from: data) {
+                throw APIError.server(code: payload.error.code, message: payload.error.message)
+            }
+            throw APIError.badStatusCode(httpResponse.statusCode, "")
+        }
+
+        return try decoder.decode(AnalysisUsageInfo.self, from: data)
     }
 }

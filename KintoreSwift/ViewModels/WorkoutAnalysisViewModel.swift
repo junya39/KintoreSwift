@@ -64,10 +64,14 @@ final class WorkoutAnalysisViewModel: ObservableObject {
     private let encodeJSON: (WorkoutAnalysisRequest) throws -> Data
     private let encodeJSONString: (WorkoutAnalysisRequest) throws -> String
     private let requestAnalysis: (Data) async throws -> WorkoutAnalysisResponse
+    private let fetchUsage: (() async throws -> AnalysisUsageInfo)?
     private let now: () -> Date
     private let timeZone: () -> TimeZone
 
     @Published private(set) var state: AnalysisState = .idle
+
+    /// 今月のAI分析使用状況（残り回数表示用）。未ログイン時や取得失敗時はnil
+    @Published private(set) var usage: AnalysisUsageInfo?
 
     /// AI分析APIが401を返した（保存済みトークンが無効）。Home側でログイン誘導に使う
     @Published var sessionExpired = false
@@ -104,6 +108,7 @@ final class WorkoutAnalysisViewModel: ObservableObject {
         self.requestAnalysis = requestAnalysis ?? { body in
             try await apiClient.analyze(body: body)
         }
+        self.fetchUsage = { try await apiClient.fetchUsage() }
         self.now = now
         self.timeZone = timeZone
     }
@@ -114,6 +119,7 @@ final class WorkoutAnalysisViewModel: ObservableObject {
         encodeJSON: @escaping (WorkoutAnalysisRequest) throws -> Data,
         encodeJSONString: @escaping (WorkoutAnalysisRequest) throws -> String,
         requestAnalysis: @escaping (Data) async throws -> WorkoutAnalysisResponse,
+        fetchUsage: (() async throws -> AnalysisUsageInfo)? = nil,
         now: @escaping () -> Date = Date.init,
         timeZone: @escaping () -> TimeZone = { .current }
     ) {
@@ -122,8 +128,22 @@ final class WorkoutAnalysisViewModel: ObservableObject {
         self.encodeJSON = encodeJSON
         self.encodeJSONString = encodeJSONString
         self.requestAnalysis = requestAnalysis
+        self.fetchUsage = fetchUsage
         self.now = now
         self.timeZone = timeZone
+    }
+
+    /// 残り回数表示の更新。未ログインや通信失敗時は現状維持（トークンはログに出さない）
+    func refreshUsage() async {
+        guard let fetchUsage else { return }
+        if let latest = try? await fetchUsage() {
+            usage = latest
+        }
+    }
+
+    /// ログアウト時などに残り回数表示を消す
+    func clearUsage() {
+        usage = nil
     }
 
     func analyzeTodayWorkout() async {
@@ -147,6 +167,8 @@ final class WorkoutAnalysisViewModel: ObservableObject {
             let jsonText = try encodeJSONString(request)
             let response = try await requestAnalysis(body)
             state = .success(AnalysisResult(request: request, jsonText: jsonText, response: response))
+            // 成功時は回数を消費しているので残り回数を更新する
+            await refreshUsage()
         } catch {
             #if DEBUG
             print("WorkoutAnalysisViewModel error: \(error)")
@@ -159,6 +181,17 @@ final class WorkoutAnalysisViewModel: ObservableObject {
                 } else if code == "monthly_limit_exceeded" {
                     // 開発者向け文言ではなく、ユーザー向けの案内を表示する
                     state = .failure("今月の無料AI分析回数を使い切りました。\nプレミアム機能は今後追加予定です。")
+                    // 403時は残り0として表示を更新（その後サーバー値で上書き）
+                    if let current = usage {
+                        usage = AnalysisUsageInfo(
+                            limit: current.limit,
+                            used: current.limit,
+                            remaining: 0,
+                            year: current.year,
+                            month: current.month
+                        )
+                    }
+                    await refreshUsage()
                 } else {
                     state = .failure(message)
                 }
