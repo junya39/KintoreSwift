@@ -61,6 +61,15 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
+    /// 保存済みトークンがサーバーに拒否された（401）ときの強制ログアウト。
+    /// サーバー呼び出しは行わず、ローカルの状態だけを未ログインへ戻す。
+    func invalidateSession(message: String) {
+        tokenStore.delete()
+        isAuthenticated = false
+        currentUser = nil
+        errorMessage = message
+    }
+
     func logout() async {
         isLoading = true
         defer { isLoading = false }
