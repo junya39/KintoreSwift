@@ -10,6 +10,8 @@ struct HomeView: View {
     @EnvironmentObject private var userStatusVM: UserStatusViewModel
     @EnvironmentObject private var monsterManager: MonsterManager
     @EnvironmentObject private var timerVM: IntervalTimerViewModel
+    @EnvironmentObject private var authVM: AuthViewModel
+    @State private var showAccountSheet = false
     @State private var selectedDate = Date()
     @State private var showDayHistory = false
     @State private var showMonsterSelection = false
@@ -247,7 +249,9 @@ struct HomeView: View {
                             streakDays: homeMetrics.streakDays,
                             buddyName: monsterManager.buddyMonster?.name,
                             hasUnlockedMonsters: monsterManager.unlockedMonsters.isEmpty == false,
-                            onSelectBuddy: { showMonsterSelection = true }
+                            isAuthenticated: authVM.isAuthenticated,
+                            onSelectBuddy: { showMonsterSelection = true },
+                            onTapAccount: { showAccountSheet = true }
                         )
                         .id(HomeScrollAnchor.top)
 
@@ -442,6 +446,12 @@ struct HomeView: View {
                 .presentationDragIndicator(.visible)
                 .preferredColorScheme(.dark)
             }
+            .sheet(isPresented: $showAccountSheet) {
+                AccountView()
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                    .preferredColorScheme(.dark)
+            }
             .sheet(isPresented: $showQuestSheet) {
                 QuestSheet(encounter: nextMonsterEncounter)
                     .presentationDetents([.medium])
@@ -624,13 +634,46 @@ private struct HomeHUDHeader: View {
     let streakDays: Int
     let buddyName: String?
     let hasUnlockedMonsters: Bool
+    let isAuthenticated: Bool
     let onSelectBuddy: () -> Void
+    let onTapAccount: () -> Void
 
     var body: some View {
         HStack(alignment: .top) {
-            Text(dateText)
-                .font(.subheadline.weight(.bold))
-                .foregroundColor(.white.opacity(0.75))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(dateText)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.white.opacity(0.75))
+
+                // アカウント（ログイン/ログイン中）チップ
+                Button {
+                    onTapAccount()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: isAuthenticated ? "person.crop.circle.fill.badge.checkmark" : "person.crop.circle")
+                            .font(.caption.weight(.heavy))
+                            .foregroundColor(isAuthenticated ? .gameGold : .gamePurpleLight)
+
+                        Text(isAuthenticated ? "ログイン中" : "ログイン")
+                            .font(.caption.weight(.heavy))
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.4))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(
+                                (isAuthenticated ? Color.gameGold : Color.gamePurple).opacity(0.4),
+                                lineWidth: 1
+                            )
+                    )
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("アカウント")
+            }
 
             Spacer()
 
