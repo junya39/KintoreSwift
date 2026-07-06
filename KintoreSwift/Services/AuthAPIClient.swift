@@ -127,13 +127,25 @@ struct AuthAPIClient {
             request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            // 接続不可・タイムアウト等の切り分け用。URLとエラー種別のみ（認証情報は出さない）
+            #if DEBUG
+            print("❌ Auth API 通信失敗: \(method) \(url.absoluteString) error=\(error.localizedDescription)")
+            #endif
+            throw error
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
+            #if DEBUG
+            print("❌ Auth API エラー応答: \(method) \(url.absoluteString) status=\(httpResponse.statusCode)")
+            #endif
             // サーバーの日本語エラーメッセージを優先。トークンや内部情報はログに出さない
             if let payload = try? JSONDecoder().decode(ServerErrorPayload.self, from: data) {
                 throw APIError.server(code: payload.error.code, message: payload.displayMessage)
