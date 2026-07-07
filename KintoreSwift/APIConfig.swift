@@ -14,7 +14,7 @@ struct APIConfig {
     static let baseURL = "http://192.168.151.207:8000"
     #endif
     #else
-    // 本番: デプロイ先が決まったらここを差し替える
-    static let baseURL = "https://api.kintore.example.com"
+    // 本番: Render上のDjangoバックエンド
+    static let baseURL = "https://kintore-ai-backend.onrender.com"
     #endif
 }
