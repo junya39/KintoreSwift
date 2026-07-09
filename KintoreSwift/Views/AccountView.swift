@@ -10,12 +10,18 @@ struct AccountView: View {
     private enum Mode {
         case login
         case register
+        /// パスワードリセット: メールアドレスを入力して確認コードを送る
+        case resetRequest
+        /// パスワードリセット: 届いたコードと新しいパスワードを入力する
+        case resetConfirm
     }
 
     @State private var mode: Mode = .login
     @State private var email = ""
     @State private var password = ""
     @State private var passwordConfirm = ""
+    @State private var resetCode = ""
+    @State private var infoMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -123,21 +129,49 @@ struct AccountView: View {
                 .background(Color.gamePurple.opacity(0.16))
                 .clipShape(Circle())
 
-            Text(mode == .login ? "ログインすると、今後データのバックアップや同期が使えるようになるよ" : "メールアドレスとパスワードで登録できるよ")
+            Text(caption)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
 
-            authTextField("メールアドレス", text: $email, isSecure: false)
-                .keyboardType(.emailAddress)
-                .textContentType(.username)
+            if mode == .resetConfirm {
+                authTextField("確認コード（6桁）", text: $resetCode, isSecure: false)
+                    .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
 
-            authTextField("パスワード", text: $password, isSecure: true)
-                .textContentType(mode == .login ? .password : .newPassword)
-
-            if mode == .register {
-                authTextField("パスワード（確認）", text: $passwordConfirm, isSecure: true)
+                authTextField("新しいパスワード", text: $password, isSecure: true)
                     .textContentType(.newPassword)
+
+                authTextField("新しいパスワード（確認）", text: $passwordConfirm, isSecure: true)
+                    .textContentType(.newPassword)
+            } else {
+                authTextField("メールアドレス", text: $email, isSecure: false)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.username)
+
+                if mode != .resetRequest {
+                    authTextField("パスワード", text: $password, isSecure: true)
+                        .textContentType(mode == .login ? .password : .newPassword)
+                }
+
+                if mode == .register {
+                    authTextField("パスワード（確認）", text: $passwordConfirm, isSecure: true)
+                        .textContentType(.newPassword)
+                }
+            }
+
+            if let infoMessage {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.gameGold)
+
+                    Text(infoMessage)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if let errorMessage = authVM.errorMessage {
@@ -162,10 +196,10 @@ struct AccountView: View {
                         ProgressView()
                             .tint(.black)
                     } else {
-                        Image(systemName: mode == .login ? "arrow.right.circle.fill" : "person.badge.plus")
+                        Image(systemName: submitIcon)
                             .font(.headline.weight(.black))
                     }
-                    Text(mode == .login ? "ログイン" : "登録する")
+                    Text(submitLabel)
                         .font(.headline.weight(.heavy))
                 }
                 .foregroundColor(.black)
@@ -183,40 +217,141 @@ struct AccountView: View {
             .buttonStyle(.plain)
             .disabled(canSubmit == false || authVM.isLoading)
 
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    mode = mode == .login ? .register : .login
-                    authVM.errorMessage = nil
-                }
-            } label: {
-                Text(mode == .login ? "アカウントがない？ 新規登録へ" : "アカウントがある？ ログインへ戻る")
-                    .font(.footnote.weight(.bold))
-                    .foregroundColor(.gamePurpleLight)
+            bottomLinks
+        }
+    }
+
+    /// モード別の補助リンク（モード切り替え・コード再送）
+    private var bottomLinks: some View {
+        VStack(spacing: 10) {
+            switch mode {
+            case .login:
+                linkButton("パスワードを忘れた？") { switchMode(to: .resetRequest) }
+                linkButton("アカウントがない？ 新規登録へ") { switchMode(to: .register) }
+            case .register:
+                linkButton("アカウントがある？ ログインへ戻る") { switchMode(to: .login) }
+            case .resetRequest:
+                linkButton("ログインへ戻る") { switchMode(to: .login) }
+            case .resetConfirm:
+                linkButton("コードが届かない？ 再送する") { resendCode() }
+                linkButton("ログインへ戻る") { switchMode(to: .login) }
             }
-            .buttonStyle(.plain)
-            .padding(.top, 2)
+        }
+        .padding(.top, 2)
+    }
+
+    private func linkButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.footnote.weight(.bold))
+                .foregroundColor(.gamePurpleLight)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var caption: String {
+        switch mode {
+        case .login:
+            return "ログインすると、今後データのバックアップや同期が使えるようになるよ"
+        case .register:
+            return "メールアドレスとパスワードで登録できるよ"
+        case .resetRequest:
+            return "登録したメールアドレスに、パスワード再設定用の6桁コードを送るよ"
+        case .resetConfirm:
+            return "メールに届いた6桁コードと、新しいパスワードを入力してね"
+        }
+    }
+
+    private var submitLabel: String {
+        switch mode {
+        case .login: return "ログイン"
+        case .register: return "登録する"
+        case .resetRequest: return "確認コードを送る"
+        case .resetConfirm: return "パスワードを再設定"
+        }
+    }
+
+    private var submitIcon: String {
+        switch mode {
+        case .login: return "arrow.right.circle.fill"
+        case .register: return "person.badge.plus"
+        case .resetRequest: return "paperplane.fill"
+        case .resetConfirm: return "key.fill"
         }
     }
 
     private var canSubmit: Bool {
-        let hasBase = email.trimmingCharacters(in: .whitespaces).isEmpty == false && password.isEmpty == false
-        if mode == .register {
-            return hasBase && passwordConfirm.isEmpty == false
+        let hasEmail = email.trimmingCharacters(in: .whitespaces).isEmpty == false
+        switch mode {
+        case .login:
+            return hasEmail && password.isEmpty == false
+        case .register:
+            return hasEmail && password.isEmpty == false && passwordConfirm.isEmpty == false
+        case .resetRequest:
+            return hasEmail
+        case .resetConfirm:
+            return resetCode.count == 6 && password.isEmpty == false && passwordConfirm.isEmpty == false
         }
-        return hasBase
+    }
+
+    private func switchMode(to newMode: Mode) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            mode = newMode
+            authVM.errorMessage = nil
+            infoMessage = nil
+            // パスワード欄はモードをまたいで引き継がない
+            password = ""
+            passwordConfirm = ""
+            resetCode = ""
+        }
     }
 
     private func submit() {
         let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
+        infoMessage = nil
         Task {
-            if mode == .login {
+            switch mode {
+            case .login:
                 _ = await authVM.login(email: trimmedEmail, password: password)
-            } else {
+            case .register:
                 _ = await authVM.register(
                     email: trimmedEmail,
                     password: password,
                     passwordConfirm: passwordConfirm
                 )
+            case .resetRequest:
+                if await authVM.requestPasswordReset(email: trimmedEmail) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        mode = .resetConfirm
+                        infoMessage = "確認コードを送ったよ。メールをチェックしてね"
+                    }
+                }
+            case .resetConfirm:
+                if await authVM.confirmPasswordReset(
+                    email: trimmedEmail,
+                    code: resetCode,
+                    newPassword: password,
+                    newPasswordConfirm: passwordConfirm
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        mode = .login
+                        password = ""
+                        passwordConfirm = ""
+                        resetCode = ""
+                        infoMessage = "パスワードを再設定したよ。新しいパスワードでログインしてね"
+                    }
+                }
+            }
+        }
+    }
+
+    /// 確認コードの再送（サーバー側で60秒のクールダウンあり）
+    private func resendCode() {
+        let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
+        infoMessage = nil
+        Task {
+            if await authVM.requestPasswordReset(email: trimmedEmail) {
+                infoMessage = "確認コードの再送を受け付けたよ"
             }
         }
     }
