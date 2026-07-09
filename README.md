@@ -26,15 +26,32 @@
 
 モンスター育成とトレーニングが連動する、新しいワークアウト体験。
 
-| ホーム | 図鑑 | カレンダー |
-|--------|------|------------|
-| <img src="./screenshots/Home2.png" width="220"> | <img src="./screenshots/Monsterdex2.png" width="220"> | <img src="./screenshots/Calendar2.png" width="220"> |
-
----
-
-| ワークアウト | セット入力 | グラフ |
-|--------------|------------|--------|
-| <img src="./screenshots/timer2.png" width="220"> | <img src="./screenshots/input2.png" width="220"> | <img src="./screenshots/graph2.png" width="220"> |
+<table>
+  <tr>
+    <th>ホーム</th>
+    <th>セット記録</th>
+    <th>種目別履歴</th>
+    <th>図鑑</th>
+  </tr>
+  <tr>
+    <td><img src="screenshots/home.png" width="180"></td>
+    <td><img src="screenshots/record-set.png" width="180"></td>
+    <td><img src="screenshots/exercise-history.png" width="180"></td>
+    <td><img src="screenshots/monster-dex.png" width="180"></td>
+  </tr>
+  <tr>
+    <th>履歴</th>
+    <th>レベル</th>
+    <th>AI分析</th>
+    <th>種目選択</th>
+  </tr>
+  <tr>
+    <td><img src="screenshots/daily-history.png" width="180"></td>
+    <td><img src="screenshots/level-status.png" width="180"></td>
+    <td><img src="screenshots/ai-analysis.png" width="180"></td>
+    <td><img src="screenshots/exercise-select.png" width="180"></td>
+  </tr>
+</table>
 
 ---
 
