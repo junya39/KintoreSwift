@@ -46,7 +46,7 @@ struct AuthAPIClient {
 
         /// 項目別エラー（メール重複・パスワード強度不足など）があればそれを優先して表示する
         var displayMessage: String {
-            for field in ["email", "password", "password_confirm"] {
+            for field in ["email", "password", "password_confirm", "code", "new_password", "new_password_confirm"] {
                 if let first = error.details?[field]?.first {
                     return first
                 }
@@ -91,6 +91,37 @@ struct AuthAPIClient {
             method: "GET",
             token: token,
             decode: AuthUser.self
+        )
+    }
+
+    /// パスワードリセットの確認コードをメール送信する。
+    /// メールアドレスの存在有無に関わらずサーバーは成功を返す（情報漏えい対策）。
+    func requestPasswordReset(email: String) async throws {
+        _ = try await request(
+            path: "/api/auth/password-reset/request/",
+            method: "POST",
+            body: ["email": email],
+            decode: EmptyResponse.self
+        )
+    }
+
+    /// メールで届いた6桁コードを検証し、新しいパスワードを設定する
+    func confirmPasswordReset(
+        email: String,
+        code: String,
+        newPassword: String,
+        newPasswordConfirm: String
+    ) async throws {
+        _ = try await request(
+            path: "/api/auth/password-reset/confirm/",
+            method: "POST",
+            body: [
+                "email": email,
+                "code": code,
+                "new_password": newPassword,
+                "new_password_confirm": newPasswordConfirm,
+            ],
+            decode: EmptyResponse.self
         )
     }
 

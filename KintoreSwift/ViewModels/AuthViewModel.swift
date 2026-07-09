@@ -61,6 +61,47 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
+    /// パスワードリセットの確認コード送信を依頼する
+    func requestPasswordReset(email: String) async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            try await api.requestPasswordReset(email: email)
+            return true
+        } catch {
+            errorMessage = Self.userMessage(for: error)
+            return false
+        }
+    }
+
+    /// 確認コードと新しいパスワードで再設定する。成功してもログインはさせず、
+    /// 新パスワードでのログインをユーザー自身に行ってもらう
+    func confirmPasswordReset(
+        email: String,
+        code: String,
+        newPassword: String,
+        newPasswordConfirm: String
+    ) async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            try await api.confirmPasswordReset(
+                email: email,
+                code: code,
+                newPassword: newPassword,
+                newPasswordConfirm: newPasswordConfirm
+            )
+            return true
+        } catch {
+            errorMessage = Self.userMessage(for: error)
+            return false
+        }
+    }
+
     /// 保存済みトークンがサーバーに拒否された（401）ときの強制ログアウト。
     /// サーバー呼び出しは行わず、ローカルの状態だけを未ログインへ戻す。
     func invalidateSession(message: String) {
