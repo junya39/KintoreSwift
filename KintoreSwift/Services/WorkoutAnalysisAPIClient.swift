@@ -23,7 +23,6 @@ struct AnalysisUsageInfo: Codable, Equatable, Sendable {
 
 struct WorkoutAnalysisAPIClient {
     enum APIError: Error, LocalizedError {
-        case invalidURL
         case invalidResponse
         case badStatusCode(Int, String)
         /// サーバーが返したユーザー向けエラー（error.code / error.message）
@@ -31,8 +30,6 @@ struct WorkoutAnalysisAPIClient {
 
         var errorDescription: String? {
             switch self {
-            case .invalidURL:
-                return "Invalid workout analysis URL."
             case .invalidResponse:
                 return "Workout analysis response was not HTTPURLResponse."
             case .badStatusCode(let statusCode, let body):
@@ -58,13 +55,13 @@ struct WorkoutAnalysisAPIClient {
         let message: String?
     }
 
-    private let baseURL: String
+    private let baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
     private let tokenProvider: () -> String?
 
     init(
-        baseURL: String = APIConfig.baseURL,
+        baseURL: URL = APIConfig.baseURL,
         session: URLSession = .shared,
         decoder: JSONDecoder = JSONDecoder(),
         tokenProvider: @escaping () -> String? = { KeychainTokenStore().load() }
@@ -76,15 +73,14 @@ struct WorkoutAnalysisAPIClient {
     }
 
     func analyze(body: Data) async throws -> WorkoutAnalysisResponse {
-        guard let url = URL(string: "\(baseURL)/api/workout-analysis/analyze/") else {
-            throw APIError.invalidURL
-        }
+        let url = baseURL.appendingPathComponent("/api/workout-analysis/analyze/")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
-        request.timeoutInterval = 15
+        // AI分析はサーバー側でOpenAI呼び出しを待つため、認証系より長めに取る
+        request.timeoutInterval = 30
 
         // AI分析はログイン必須。Keychainのトークンを付与する（トークンはログに出さない）
         if let token = tokenProvider() {
@@ -95,9 +91,7 @@ struct WorkoutAnalysisAPIClient {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            #if DEBUG
-            print("WorkoutAnalysisAPIClient network error: \(error)")
-            #endif
+            APIDebugLogger.logTransportError(label: "AI分析API", method: "POST", url: url, error: error)
             throw error
         }
 
@@ -106,6 +100,13 @@ struct WorkoutAnalysisAPIClient {
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
+            APIDebugLogger.logHTTPError(
+                label: "AI分析API",
+                method: "POST",
+                url: url,
+                statusCode: httpResponse.statusCode,
+                responseBody: data
+            )
             // サーバーのエラーJSONに日本語メッセージが入っていればそれを優先する
             if let payload = try? decoder.decode(ServerErrorPayload.self, from: data) {
                 throw APIError.server(code: payload.error.code, message: payload.error.message)
@@ -130,9 +131,7 @@ struct WorkoutAnalysisAPIClient {
 
     /// 今月のAI分析使用状況を取得する（要ログイン）
     func fetchUsage() async throws -> AnalysisUsageInfo {
-        guard let url = URL(string: "\(baseURL)/api/workout-analysis/usage/") else {
-            throw APIError.invalidURL
-        }
+        let url = baseURL.appendingPathComponent("/api/workout-analysis/usage/")
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -141,13 +140,26 @@ struct WorkoutAnalysisAPIClient {
             request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            APIDebugLogger.logTransportError(label: "AI分析使用状況API", method: "GET", url: url, error: error)
+            throw error
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
+            APIDebugLogger.logHTTPError(
+                label: "AI分析使用状況API",
+                method: "GET",
+                url: url,
+                statusCode: httpResponse.statusCode,
+                responseBody: data
+            )
             if let payload = try? decoder.decode(ServerErrorPayload.self, from: data) {
                 throw APIError.server(code: payload.error.code, message: payload.error.message)
             }
