@@ -15,7 +15,6 @@ struct AuthResponse: Codable, Equatable, Sendable {
 
 struct AuthAPIClient {
     enum APIError: Error, LocalizedError {
-        case invalidURL
         case invalidResponse
         case badStatusCode(Int)
         /// サーバーが返したユーザー向けエラー（error.code / error.message）
@@ -23,8 +22,6 @@ struct AuthAPIClient {
 
         var errorDescription: String? {
             switch self {
-            case .invalidURL:
-                return "Invalid auth URL."
             case .invalidResponse:
                 return "Auth response was not HTTPURLResponse."
             case .badStatusCode(let statusCode):
@@ -55,10 +52,10 @@ struct AuthAPIClient {
         }
     }
 
-    private let baseURL: String
+    private let baseURL: URL
     private let session: URLSession
 
-    init(baseURL: String = APIConfig.baseURL, session: URLSession = .shared) {
+    init(baseURL: URL = APIConfig.baseURL, session: URLSession = .shared) {
         self.baseURL = baseURL
         self.session = session
     }
@@ -143,9 +140,8 @@ struct AuthAPIClient {
         token: String? = nil,
         decode: T.Type
     ) async throws -> T {
-        guard let url = URL(string: "\(baseURL)\(path)") else {
-            throw APIError.invalidURL
-        }
+        // Django側は末尾スラッシュ必須。appendingPathComponentは末尾スラッシュを保持する
+        let url = baseURL.appendingPathComponent(path)
 
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -163,9 +159,7 @@ struct AuthAPIClient {
             (data, response) = try await session.data(for: request)
         } catch {
             // 接続不可・タイムアウト等の切り分け用。URLとエラー種別のみ（認証情報は出さない）
-            #if DEBUG
-            print("❌ Auth API 通信失敗: \(method) \(url.absoluteString) error=\(error.localizedDescription)")
-            #endif
+            APIDebugLogger.logTransportError(label: "Auth API", method: method, url: url, error: error)
             throw error
         }
 
@@ -174,9 +168,14 @@ struct AuthAPIClient {
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
-            #if DEBUG
-            print("❌ Auth API エラー応答: \(method) \(url.absoluteString) status=\(httpResponse.statusCode)")
-            #endif
+            // レスポンス本文はサーバーのエラーJSONのみ（トークンやリクエスト本文は出さない）
+            APIDebugLogger.logHTTPError(
+                label: "Auth API",
+                method: method,
+                url: url,
+                statusCode: httpResponse.statusCode,
+                responseBody: data
+            )
             // サーバーの日本語エラーメッセージを優先。トークンや内部情報はログに出さない
             if let payload = try? JSONDecoder().decode(ServerErrorPayload.self, from: data) {
                 throw APIError.server(code: payload.error.code, message: payload.displayMessage)

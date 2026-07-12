@@ -195,6 +195,17 @@ final class WorkoutAnalysisViewModel: ObservableObject {
                 } else {
                     state = .failure(message)
                 }
+            } else if case WorkoutAnalysisAPIClient.APIError.badStatusCode(let statusCode, _) = error {
+                // エラーJSONを持たない応答（Renderの502/503など）
+                if statusCode == 401 {
+                    state = .failure("ログインの有効期限が切れました。もう一度ログインしてください。")
+                    sessionExpired = true
+                } else {
+                    state = .failure(APIErrorMessage.message(forStatusCode: statusCode))
+                }
+            } else if let urlError = error as? URLError {
+                // サーバー未到達（圏外・接続不可・タイムアウト）の切り分け
+                state = .failure(APIErrorMessage.message(for: urlError))
             } else {
                 state = .failure("分析に失敗しました。通信環境を確認して、時間をおいて再度お試しください。")
             }

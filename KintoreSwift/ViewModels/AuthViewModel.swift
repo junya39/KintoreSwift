@@ -144,9 +144,18 @@ final class AuthViewModel: ObservableObject {
     }
 
     private static func userMessage(for error: Error) -> String {
+        // サーバーが返した日本語メッセージ（メール重複・パスワード強度など）を最優先
         if case AuthAPIClient.APIError.server(_, let message) = error {
             return message
         }
-        return "通信に失敗しました。通信環境を確認して、時間をおいて再度お試しください。"
+        // エラーJSONを持たない応答（Renderの502/503など）はステータスコードで案内を分ける
+        if case AuthAPIClient.APIError.badStatusCode(let statusCode) = error {
+            return APIErrorMessage.message(forStatusCode: statusCode)
+        }
+        // サーバー未到達（圏外・接続不可・タイムアウト）の切り分け
+        if let urlError = error as? URLError {
+            return APIErrorMessage.message(for: urlError)
+        }
+        return APIErrorMessage.generic
     }
 }
