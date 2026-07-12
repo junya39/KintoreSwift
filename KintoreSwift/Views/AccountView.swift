@@ -359,7 +359,7 @@ struct AccountView: View {
     private func authTextField(_ placeholder: String, text: Binding<String>, isSecure: Bool) -> some View {
         Group {
             if isSecure {
-                SecureField(placeholder, text: text)
+                RevealableSecureField(placeholder: placeholder, text: text)
             } else {
                 TextField(placeholder, text: text)
             }
@@ -375,5 +375,39 @@ struct AccountView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
         )
+    }
+}
+
+/// 目のアイコンで表示・非表示を切り替えられるパスワード入力欄。
+/// 切り替えても入力済みの文字は保持される（フィールドごとに独立して切り替わる）。
+private struct RevealableSecureField: View {
+    let placeholder: String
+    @Binding var text: String
+
+    @State private var isRevealed = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Group {
+                if isRevealed {
+                    TextField(placeholder, text: $text)
+                } else {
+                    SecureField(placeholder, text: $text)
+                }
+            }
+
+            Button {
+                isRevealed.toggle()
+            } label: {
+                Image(systemName: isRevealed ? "eye.slash.fill" : "eye.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.45))
+                    // タップ領域を広げる（アイコン自体は小さいため）
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isRevealed ? "パスワードを隠す" : "パスワードを表示")
+        }
     }
 }
